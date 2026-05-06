@@ -1,0 +1,12 @@
+{
+  "functions": {
+    "api/**/*.ts": {
+      "includeFiles": "src/lib/db/schema.ts,src/lib/presets/wnba.ts,src/rules/**/*.ts,src/types/**/*.ts,api/_*.ts,email-templates/*.html",
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/((?!api).*)", "destination": "/index.html" }
+  ]
+}

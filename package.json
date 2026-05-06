@@ -1,0 +1,61 @@
+{
+  "name": "wnba-mns-fantasy",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "db:check": "drizzle-kit check"
+  },
+  "dependencies": {
+    "@clerk/backend": "^1",
+    "@clerk/clerk-react": "^5",
+    "@neondatabase/serverless": "^1",
+    "@sentry/react": "^10",
+    "@tanstack/react-query": "^5",
+    "@vercel/blob": "^0",
+    "drizzle-orm": "^0.45",
+    "html-to-image": "^1",
+    "papaparse": "^5",
+    "react": "^19",
+    "react-dom": "^19",
+    "react-router-dom": "^7",
+    "sonner": "^2",
+    "zod": "^3",
+    "zustand": "^4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^24",
+    "@types/papaparse": "^5",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vercel/node": "^3",
+    "@vitejs/plugin-react": "^5",
+    "autoprefixer": "^10",
+    "drizzle-kit": "^0.31",
+    "eslint": "^9",
+    "eslint-plugin-react-hooks": "^5",
+    "eslint-plugin-react-refresh": "^0.4",
+    "globals": "^16",
+    "postcss": "^8",
+    "tailwindcss": "^4",
+    "typescript": "~5.9",
+    "typescript-eslint": "^8",
+    "vite": "^7",
+    "vitest": "^2"
+  }
+}
