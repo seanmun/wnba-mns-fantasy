@@ -45,6 +45,7 @@
     "@types/react-dom": "^19",
     "@vercel/node": "^3",
     "@vitejs/plugin-react": "^5",
+    "@vitest/coverage-v8": "^2.1.9",
     "autoprefixer": "^10",
     "drizzle-kit": "^0.31",
     "eslint": "^9",

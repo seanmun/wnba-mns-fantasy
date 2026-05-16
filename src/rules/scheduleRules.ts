@@ -135,12 +135,22 @@ export function formatCountdown(
   targetDate: string,
   now: Date = new Date()
 ): string {
-  const target = new Date(targetDate + 'T23:59:59')
-  const diffMs = target.getTime() - now.getTime()
-  if (diffMs < 0) return 'Passed'
+  const todayStr =
+    now.getFullYear() +
+    '-' +
+    String(now.getMonth() + 1).padStart(2, '0') +
+    '-' +
+    String(now.getDate()).padStart(2, '0')
 
-  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
-  if (diffDays === 0) return 'Today'
+  if (targetDate < todayStr) return 'Passed'
+  if (targetDate === todayStr) return 'Today'
+
+  const target = new Date(targetDate + 'T00:00:00')
+  const today = new Date(todayStr + 'T00:00:00')
+  const diffDays = Math.round(
+    (target.getTime() - today.getTime()) / 86_400_000
+  )
+
   if (diffDays === 1) return '1 day'
   if (diffDays < 7) return `${diffDays} days`
   if (diffDays < 30) {
