@@ -13,7 +13,6 @@ describe('generateWeeks', () => {
       leagueId: 'mns-w-2026',
       config: WNBA_LEAGUE_PRESET,
     })
-    const regular = weeks.filter((w) => !w.label || !w.label.includes('Round'))
     // 13 reg + 3 playoff weeks = 16 (no consolation per preset)
     expect(weeks.length).toBeGreaterThanOrEqual(13)
   })

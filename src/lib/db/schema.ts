@@ -34,9 +34,13 @@ import type { RookieDraftInfo, MigrationSource } from '../../types/player'
 // SHARED TABLES (cross-game on the same Neon DB)
 // ============================================================================
 
+// Matches the live shared `users` table created by ncaa-mns-fantasy.
+// NOT-marking email .unique() here because the live table doesn't have
+// that constraint (NCAA's TS schema declares it but never migrated).
+// Pushing .unique() would prompt to truncate the table.
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
-  email: text('email').notNull().unique(),
+  email: text('email').notNull(),
   displayName: text('display_name').notNull(),
   avatarUrl: text('avatar_url'),
   role: text('role').notNull().default('owner'),
@@ -48,12 +52,18 @@ export const users = pgTable('users', {
 // LEAGUES + TEAMS
 // ============================================================================
 
-export const wnbaLeagues = pgTable(
-  'wnba_leagues',
+// `sport` and `gameSlug` are the cross-platform discriminators. Together
+// they're enough to identify a league across the multi-tenant Neon DB.
+// `gameSlug` matches the NCAA convention ('mns-wnba-2026', 'mns-nba-2027')
+// for filtering in shared tables like marketing_game_prefs / email_log.
+export const mnsLeagues = pgTable(
+  'mns_leagues',
   {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     seasonYear: integer('season_year').notNull(),
+    sport: text('sport').notNull(),
+    gameSlug: text('game_slug').notNull(),
     config: jsonb('config').$type<LeagueConfig>().notNull(),
     leaguePhase: text('league_phase')
       .$type<LeaguePhase>()
@@ -71,16 +81,20 @@ export const wnbaLeagues = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
-  (t) => [index('idx_wnba_leagues_commissioner').on(t.commissionerId)]
+  (t) => [
+    index('idx_mns_leagues_commissioner').on(t.commissionerId),
+    index('idx_mns_leagues_game_slug').on(t.gameSlug),
+    index('idx_mns_leagues_sport_season').on(t.sport, t.seasonYear),
+  ]
 )
 
-export const wnbaTeams = pgTable(
-  'wnba_teams',
+export const mnsTeams = pgTable(
+  'mns_teams',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     abbrev: text('abbrev').notNull(),
     telegramUsername: text('telegram_username'),
@@ -92,15 +106,15 @@ export const wnbaTeams = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
-  (t) => [index('idx_wnba_teams_league').on(t.leagueId)]
+  (t) => [index('idx_mns_teams_league').on(t.leagueId)]
 )
 
-export const wnbaTeamOwners = pgTable(
-  'wnba_team_owners',
+export const mnsTeamOwners = pgTable(
+  'mns_team_owners',
   {
     teamId: text('team_id')
       .notNull()
-      .references(() => wnbaTeams.id, { onDelete: 'cascade' }),
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
     email: text('email').notNull(),
     displayName: text('display_name'),
@@ -109,8 +123,8 @@ export const wnbaTeamOwners = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.teamId, t.email] }),
-    index('idx_wnba_team_owners_email').on(t.email),
-    index('idx_wnba_team_owners_user').on(t.userId),
+    index('idx_mns_team_owners_email').on(t.email),
+    index('idx_mns_team_owners_user').on(t.userId),
   ]
 )
 
@@ -118,8 +132,8 @@ export const wnbaTeamOwners = pgTable(
 // PLAYERS
 // ============================================================================
 
-export const wnbaPlayers = pgTable(
-  'wnba_players',
+export const mnsPlayers = pgTable(
+  'mns_players',
   {
     id: text('id').primaryKey(),
     fantraxId: text('fantrax_id').notNull().unique(),
@@ -127,10 +141,10 @@ export const wnbaPlayers = pgTable(
     position: text('position').notNull(),
     salary: bigint('salary', { mode: 'number' }).notNull().default(0),
     teamCode: text('team_code').notNull().default(''),
-    leagueId: text('league_id').references(() => wnbaLeagues.id, {
+    leagueId: text('league_id').references(() => mnsLeagues.id, {
       onDelete: 'cascade',
     }),
-    teamId: text('team_id').references(() => wnbaTeams.id, {
+    teamId: text('team_id').references(() => mnsTeams.id, {
       onDelete: 'set null',
     }),
     sport: text('sport').notNull().default('wnba'),
@@ -150,9 +164,9 @@ export const wnbaPlayers = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (t) => [
-    index('idx_wnba_players_league').on(t.leagueId),
-    index('idx_wnba_players_team').on(t.teamId),
-    index('idx_wnba_players_league_team').on(t.leagueId, t.teamId),
+    index('idx_mns_players_league').on(t.leagueId),
+    index('idx_mns_players_team').on(t.teamId),
+    index('idx_mns_players_league_team').on(t.leagueId, t.teamId),
   ]
 )
 
@@ -160,16 +174,16 @@ export const wnbaPlayers = pgTable(
 // ROSTERS — keeper decisions
 // ============================================================================
 
-export const wnbaRosters = pgTable(
-  'wnba_rosters',
+export const mnsRosters = pgTable(
+  'mns_rosters',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     teamId: text('team_id')
       .notNull()
-      .references(() => wnbaTeams.id, { onDelete: 'cascade' }),
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     seasonYear: integer('season_year').notNull(),
     entries: jsonb('entries')
       .$type<RosterEntry[]>()
@@ -188,8 +202,8 @@ export const wnbaRosters = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (t) => [
-    index('idx_wnba_rosters_league_season').on(t.leagueId, t.seasonYear),
-    index('idx_wnba_rosters_team').on(t.teamId),
+    index('idx_mns_rosters_league_season').on(t.leagueId, t.seasonYear),
+    index('idx_mns_rosters_team').on(t.teamId),
   ]
 )
 
@@ -197,16 +211,16 @@ export const wnbaRosters = pgTable(
 // REGULAR-SEASON ROSTERS — active/IR/redshirt slot management
 // ============================================================================
 
-export const wnbaRegularSeasonRosters = pgTable(
-  'wnba_regular_season_rosters',
+export const mnsRegularSeasonRosters = pgTable(
+  'mns_regular_season_rosters',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     teamId: text('team_id')
       .notNull()
-      .references(() => wnbaTeams.id, { onDelete: 'cascade' }),
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     seasonYear: integer('season_year').notNull(),
     activeRoster: text('active_roster').array().notNull().default(sql`'{}'::text[]`),
     irSlots: text('ir_slots').array().notNull().default(sql`'{}'::text[]`),
@@ -218,8 +232,8 @@ export const wnbaRegularSeasonRosters = pgTable(
     updatedBy: text('updated_by'),
   },
   (t) => [
-    index('idx_wnba_reg_season_rosters_league').on(t.leagueId),
-    index('idx_wnba_reg_season_rosters_team').on(t.teamId),
+    index('idx_mns_reg_season_rosters_league').on(t.leagueId),
+    index('idx_mns_reg_season_rosters_team').on(t.teamId),
   ]
 )
 
@@ -227,23 +241,23 @@ export const wnbaRegularSeasonRosters = pgTable(
 // DAILY LINEUPS
 // ============================================================================
 
-export const wnbaDailyLineups = pgTable(
-  'wnba_daily_lineups',
+export const mnsDailyLineups = pgTable(
+  'mns_daily_lineups',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     teamId: text('team_id')
       .notNull()
-      .references(() => wnbaTeams.id, { onDelete: 'cascade' }),
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     gameDate: text('game_date').notNull(),
     activePlayerIds: text('active_player_ids').array().notNull().default(sql`'{}'::text[]`),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
     updatedBy: text('updated_by'),
   },
   (t) => [
-    index('idx_wnba_daily_lineups_team_date').on(t.teamId, t.gameDate),
+    index('idx_mns_daily_lineups_team_date').on(t.teamId, t.gameDate),
   ]
 )
 
@@ -251,13 +265,13 @@ export const wnbaDailyLineups = pgTable(
 // DRAFT
 // ============================================================================
 
-export const wnbaDrafts = pgTable(
-  'wnba_drafts',
+export const mnsDrafts = pgTable(
+  'mns_drafts',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     seasonYear: integer('season_year').notNull(),
     status: text('status').notNull().default('setup'),
     draftOrder: text('draft_order').array().notNull().default(sql`'{}'::text[]`),
@@ -273,26 +287,26 @@ export const wnbaDrafts = pgTable(
     completedAt: timestamp('completed_at'),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
-  (t) => [index('idx_wnba_drafts_league_season').on(t.leagueId, t.seasonYear)]
+  (t) => [index('idx_mns_drafts_league_season').on(t.leagueId, t.seasonYear)]
 )
 
-export const wnbaPickAssignments = pgTable(
-  'wnba_pick_assignments',
+export const mnsPickAssignments = pgTable(
+  'mns_pick_assignments',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     seasonYear: integer('season_year').notNull(),
     round: integer('round').notNull(),
     pickInRound: integer('pick_in_round').notNull(),
     overallPick: integer('overall_pick').notNull(),
     currentTeamId: text('current_team_id')
       .notNull()
-      .references(() => wnbaTeams.id, { onDelete: 'cascade' }),
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     originalTeamId: text('original_team_id')
       .notNull()
-      .references(() => wnbaTeams.id, { onDelete: 'cascade' }),
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     originalTeamName: text('original_team_name').notNull(),
     originalTeamAbbrev: text('original_team_abbrev').notNull(),
     playerId: text('player_id'),
@@ -309,44 +323,44 @@ export const wnbaPickAssignments = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (t) => [
-    index('idx_wnba_pick_assignments_league').on(t.leagueId),
-    index('idx_wnba_pick_assignments_current_team').on(t.currentTeamId),
-    index('idx_wnba_pick_assignments_league_season').on(t.leagueId, t.seasonYear),
+    index('idx_mns_pick_assignments_league').on(t.leagueId),
+    index('idx_mns_pick_assignments_current_team').on(t.currentTeamId),
+    index('idx_mns_pick_assignments_league_season').on(t.leagueId, t.seasonYear),
   ]
 )
 
-export const wnbaRookieDraftPicks = pgTable(
-  'wnba_rookie_draft_picks',
+export const mnsRookieDraftPicks = pgTable(
+  'mns_rookie_draft_picks',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     seasonYear: integer('season_year').notNull(),
     round: integer('round').notNull(),
     pickInRound: integer('pick_in_round').notNull(),
     overallPick: integer('overall_pick').notNull(),
     teamId: text('team_id')
       .notNull()
-      .references(() => wnbaTeams.id, { onDelete: 'cascade' }),
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     playerId: text('player_id'),
     playerName: text('player_name'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (t) => [
-    index('idx_wnba_rookie_picks_league').on(t.leagueId),
-    index('idx_wnba_rookie_picks_team').on(t.teamId),
+    index('idx_mns_rookie_picks_league').on(t.leagueId),
+    index('idx_mns_rookie_picks_team').on(t.teamId),
   ]
 )
 
-export const wnbaDraftHistory = pgTable(
-  'wnba_draft_history',
+export const mnsDraftHistory = pgTable(
+  'mns_draft_history',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     seasonYear: integer('season_year').notNull(),
     picks: jsonb('picks').$type<DraftPick[]>().notNull().default(sql`'[]'::jsonb`),
     keepers: jsonb('keepers').$type<DraftPick[]>().notNull().default(sql`'[]'::jsonb`),
@@ -356,15 +370,15 @@ export const wnbaDraftHistory = pgTable(
     completedBy: text('completed_by').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
-  (t) => [index('idx_wnba_draft_history_league').on(t.leagueId)]
+  (t) => [index('idx_mns_draft_history_league').on(t.leagueId)]
 )
 
 // ============================================================================
 // SCHEDULE — games, league_weeks, matchups
 // ============================================================================
 
-export const wnbaGames = pgTable(
-  'wnba_games',
+export const mnsGames = pgTable(
+  'mns_games',
   {
     id: text('id').primaryKey(),
     seasonYear: integer('season_year').notNull(),
@@ -375,16 +389,16 @@ export const wnbaGames = pgTable(
     notes: text('notes'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
-  (t) => [index('idx_wnba_games_date').on(t.gameDate, t.seasonYear)]
+  (t) => [index('idx_mns_games_date').on(t.gameDate, t.seasonYear)]
 )
 
-export const wnbaLeagueWeeks = pgTable(
-  'wnba_league_weeks',
+export const mnsLeagueWeeks = pgTable(
+  'mns_league_weeks',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     seasonYear: integer('season_year').notNull(),
     weekNumber: integer('week_number').notNull(),
     matchupWeek: integer('matchup_week').notNull(),
@@ -393,29 +407,29 @@ export const wnbaLeagueWeeks = pgTable(
     isTradeDeadlineWeek: boolean('is_trade_deadline_week').notNull().default(false),
     label: text('label'),
   },
-  (t) => [index('idx_wnba_league_weeks_league_season').on(t.leagueId, t.seasonYear)]
+  (t) => [index('idx_mns_league_weeks_league_season').on(t.leagueId, t.seasonYear)]
 )
 
-export const wnbaMatchups = pgTable(
-  'wnba_matchups',
+export const mnsMatchups = pgTable(
+  'mns_matchups',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     seasonYear: integer('season_year').notNull(),
     matchupWeek: integer('matchup_week').notNull(),
     homeTeamId: text('home_team_id')
       .notNull()
-      .references(() => wnbaTeams.id, { onDelete: 'cascade' }),
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     awayTeamId: text('away_team_id')
       .notNull()
-      .references(() => wnbaTeams.id, { onDelete: 'cascade' }),
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     homeScore: numeric('home_score'),
     awayScore: numeric('away_score'),
   },
   (t) => [
-    index('idx_wnba_matchups_league_week').on(t.leagueId, t.matchupWeek),
+    index('idx_mns_matchups_league_week').on(t.leagueId, t.matchupWeek),
   ]
 )
 
@@ -423,16 +437,16 @@ export const wnbaMatchups = pgTable(
 // FEES
 // ============================================================================
 
-export const wnbaKeeperFees = pgTable(
-  'wnba_keeper_fees',
+export const mnsKeeperFees = pgTable(
+  'mns_keeper_fees',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     teamId: text('team_id')
       .notNull()
-      .references(() => wnbaTeams.id, { onDelete: 'cascade' }),
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     seasonYear: integer('season_year').notNull(),
     franchiseTagFees: numeric('franchise_tag_fees').notNull().default('0'),
     redshirtFees: numeric('redshirt_fees').notNull().default('0'),
@@ -443,19 +457,19 @@ export const wnbaKeeperFees = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
-  (t) => [index('idx_wnba_keeper_fees_league').on(t.leagueId)]
+  (t) => [index('idx_mns_keeper_fees_league').on(t.leagueId)]
 )
 
-export const wnbaTeamFees = pgTable(
-  'wnba_team_fees',
+export const mnsTeamFees = pgTable(
+  'mns_team_fees',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     teamId: text('team_id')
       .notNull()
-      .references(() => wnbaTeams.id, { onDelete: 'cascade' }),
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     seasonYear: integer('season_year').notNull(),
     franchiseTagFees: numeric('franchise_tag_fees').notNull().default('0'),
     redshirtFees: numeric('redshirt_fees').notNull().default('0'),
@@ -470,8 +484,8 @@ export const wnbaTeamFees = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (t) => [
-    index('idx_wnba_team_fees_league').on(t.leagueId),
-    index('idx_wnba_team_fees_team').on(t.teamId),
+    index('idx_mns_team_fees_league').on(t.leagueId),
+    index('idx_mns_team_fees_team').on(t.teamId),
   ]
 )
 
@@ -479,17 +493,17 @@ export const wnbaTeamFees = pgTable(
 // TRADES
 // ============================================================================
 
-export const wnbaTradeProposals = pgTable(
-  'wnba_trade_proposals',
+export const mnsTradeProposals = pgTable(
+  'mns_trade_proposals',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     seasonYear: integer('season_year').notNull(),
     proposedByTeamId: text('proposed_by_team_id')
       .notNull()
-      .references(() => wnbaTeams.id, { onDelete: 'cascade' }),
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     proposedByUserId: text('proposed_by_user_id')
       .notNull()
       .references(() => users.id),
@@ -504,21 +518,21 @@ export const wnbaTradeProposals = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (t) => [
-    index('idx_wnba_trade_proposals_league').on(t.leagueId),
-    index('idx_wnba_trade_proposals_status').on(t.status),
+    index('idx_mns_trade_proposals_league').on(t.leagueId),
+    index('idx_mns_trade_proposals_status').on(t.status),
   ]
 )
 
-export const wnbaTradeProposalResponses = pgTable(
-  'wnba_trade_proposal_responses',
+export const mnsTradeProposalResponses = pgTable(
+  'mns_trade_proposal_responses',
   {
     id: text('id').primaryKey(),
     proposalId: text('proposal_id')
       .notNull()
-      .references(() => wnbaTradeProposals.id, { onDelete: 'cascade' }),
+      .references(() => mnsTradeProposals.id, { onDelete: 'cascade' }),
     teamId: text('team_id')
       .notNull()
-      .references(() => wnbaTeams.id, { onDelete: 'cascade' }),
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     status: text('status').notNull().default('pending'),
     respondedBy: text('responded_by'),
     respondedAt: timestamp('responded_at'),
@@ -526,8 +540,8 @@ export const wnbaTradeProposalResponses = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (t) => [
-    index('idx_wnba_trade_responses_proposal').on(t.proposalId),
-    index('idx_wnba_trade_responses_team').on(t.teamId),
+    index('idx_mns_trade_responses_proposal').on(t.proposalId),
+    index('idx_mns_trade_responses_team').on(t.teamId),
   ]
 )
 
@@ -535,20 +549,20 @@ export const wnbaTradeProposalResponses = pgTable(
 // WAGERS
 // ============================================================================
 
-export const wnbaWagers = pgTable(
-  'wnba_wagers',
+export const mnsWagers = pgTable(
+  'mns_wagers',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     seasonYear: integer('season_year').notNull(),
     proposerTeamId: text('proposer_team_id')
       .notNull()
-      .references(() => wnbaTeams.id, { onDelete: 'cascade' }),
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     opponentTeamId: text('opponent_team_id')
       .notNull()
-      .references(() => wnbaTeams.id, { onDelete: 'cascade' }),
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     description: text('description').notNull(),
     amount: numeric('amount').notNull(),
     settlementDate: text('settlement_date'),
@@ -563,9 +577,9 @@ export const wnbaWagers = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (t) => [
-    index('idx_wnba_wagers_league').on(t.leagueId),
-    index('idx_wnba_wagers_proposer').on(t.proposerTeamId),
-    index('idx_wnba_wagers_opponent').on(t.opponentTeamId),
+    index('idx_mns_wagers_league').on(t.leagueId),
+    index('idx_mns_wagers_proposer').on(t.proposerTeamId),
+    index('idx_mns_wagers_opponent').on(t.opponentTeamId),
   ]
 )
 
@@ -573,28 +587,28 @@ export const wnbaWagers = pgTable(
 // WATCHLISTS
 // ============================================================================
 
-export const wnbaWatchlists = pgTable(
-  'wnba_watchlists',
+export const mnsWatchlists = pgTable(
+  'mns_watchlists',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     teamId: text('team_id')
       .notNull()
-      .references(() => wnbaTeams.id, { onDelete: 'cascade' }),
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     playerIds: text('player_ids').array().notNull().default(sql`'{}'::text[]`),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
-  (t) => [index('idx_wnba_watchlists_league_team').on(t.leagueId, t.teamId)]
+  (t) => [index('idx_mns_watchlists_league_team').on(t.leagueId, t.teamId)]
 )
 
 // ============================================================================
 // STATS
 // ============================================================================
 
-export const wnbaProjectedStats = pgTable('wnba_projected_stats', {
+export const mnsProjectedStats = pgTable('mns_projected_stats', {
   fantraxId: text('fantrax_id').primaryKey(),
   name: text('name').notNull(),
   teamCode: text('team_code').notNull().default(''),
@@ -619,7 +633,7 @@ export const wnbaProjectedStats = pgTable('wnba_projected_stats', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
 
-export const wnbaPreviousStats = pgTable('wnba_previous_stats', {
+export const mnsPreviousStats = pgTable('mns_previous_stats', {
   fantraxId: text('fantrax_id').primaryKey(),
   name: text('name').notNull(),
   teamCode: text('team_code').notNull().default(''),
@@ -642,8 +656,8 @@ export const wnbaPreviousStats = pgTable('wnba_previous_stats', {
 // PROSPECTS
 // ============================================================================
 
-export const wnbaProspects = pgTable(
-  'wnba_prospects',
+export const mnsProspects = pgTable(
+  'mns_prospects',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     rank: integer('rank').notNull(),
@@ -667,20 +681,20 @@ export const wnbaProspects = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
-  (t) => [index('idx_wnba_prospects_rank').on(t.rank)]
+  (t) => [index('idx_mns_prospects_rank').on(t.rank)]
 )
 
 // ============================================================================
 // PORTFOLIO — prize pool wallet tracking
 // ============================================================================
 
-export const wnbaPortfolios = pgTable(
-  'wnba_portfolios',
+export const mnsPortfolios = pgTable(
+  'mns_portfolios',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     walletAddress: text('wallet_address').notNull(),
     usdInvested: numeric('usd_invested').notNull().default('0'),
     cachedEthBalance: numeric('cached_eth_balance'),
@@ -690,77 +704,77 @@ export const wnbaPortfolios = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
-  (t) => [index('idx_wnba_portfolios_league').on(t.leagueId)]
+  (t) => [index('idx_mns_portfolios_league').on(t.leagueId)]
 )
 
 // ============================================================================
 // PLAYOFFS
 // ============================================================================
 
-export const wnbaPlayoffBrackets = pgTable(
-  'wnba_playoff_brackets',
+export const mnsPlayoffBrackets = pgTable(
+  'mns_playoff_brackets',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     seasonYear: integer('season_year').notNull(),
     bracket: jsonb('bracket').notNull(),
     consolation: jsonb('consolation'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
-  (t) => [index('idx_wnba_playoff_brackets_league').on(t.leagueId)]
+  (t) => [index('idx_mns_playoff_brackets_league').on(t.leagueId)]
 )
 
-export const wnbaPrizePayouts = pgTable(
-  'wnba_prize_payouts',
+export const mnsPrizePayouts = pgTable(
+  'mns_prize_payouts',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     seasonYear: integer('season_year').notNull(),
     zone: text('zone').notNull(),
     totalPool: numeric('total_pool').notNull(),
     payouts: jsonb('payouts').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
-  (t) => [index('idx_wnba_prize_payouts_league').on(t.leagueId)]
+  (t) => [index('idx_mns_prize_payouts_league').on(t.leagueId)]
 )
 
 // ============================================================================
 // AUDIT — importer log + phase transitions
 // ============================================================================
 
-export const wnbaLeagueImports = pgTable(
-  'wnba_league_imports',
+export const mnsLeagueImports = pgTable(
+  'mns_league_imports',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     importer: text('importer').notNull(),
     ranBy: text('ran_by').notNull().references(() => users.id),
     ranAt: timestamp('ran_at').defaultNow().notNull(),
     fileHash: text('file_hash'),
     resultSummary: jsonb('result_summary'),
   },
-  (t) => [index('idx_wnba_league_imports_league').on(t.leagueId)]
+  (t) => [index('idx_mns_league_imports_league').on(t.leagueId)]
 )
 
-export const wnbaPhaseTransitions = pgTable(
-  'wnba_phase_transitions',
+export const mnsPhaseTransitions = pgTable(
+  'mns_phase_transitions',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     leagueId: text('league_id')
       .notNull()
-      .references(() => wnbaLeagues.id, { onDelete: 'cascade' }),
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     fromPhase: text('from_phase').$type<LeaguePhase>(),
     toPhase: text('to_phase').$type<LeaguePhase>().notNull(),
     triggeredBy: text('triggered_by').notNull().references(() => users.id),
     triggeredAt: timestamp('triggered_at').defaultNow().notNull(),
     preconditionsMet: jsonb('preconditions_met'),
   },
-  (t) => [index('idx_wnba_phase_transitions_league').on(t.leagueId)]
+  (t) => [index('idx_mns_phase_transitions_league').on(t.leagueId)]
 )

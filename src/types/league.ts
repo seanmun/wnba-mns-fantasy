@@ -1,4 +1,4 @@
-import type { LeagueConfig, ScoringModeId } from './leagueConfig'
+import type { LeagueConfig, ScoringModeId, Sport } from './leagueConfig'
 
 export type LeaguePhase =
   | 'rookie_draft'
@@ -32,6 +32,8 @@ export interface League {
   id: string
   name: string
   seasonYear: number
+  sport: Sport
+  gameSlug: string
   config: LeagueConfig
   leaguePhase: LeaguePhase
   keepersLocked: boolean

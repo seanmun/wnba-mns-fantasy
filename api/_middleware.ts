@@ -2,7 +2,7 @@ import { verifyToken } from '@clerk/backend'
 import type { VercelRequest } from '@vercel/node'
 import { eq, and } from 'drizzle-orm'
 import { db } from './_db.js'
-import { users, wnbaLeagues, wnbaTeamOwners } from '../src/lib/db/schema.js'
+import { users, mnsLeagues, mnsTeamOwners } from '../src/lib/db/schema.js'
 
 export async function verifyAuth(req: VercelRequest): Promise<string | null> {
   try {
@@ -36,18 +36,18 @@ export async function isSiteAdmin(userId: string): Promise<boolean> {
 
 export async function isCommissioner(userId: string, leagueId: string): Promise<boolean> {
   const [row] = await db
-    .select({ commissionerId: wnbaLeagues.commissionerId })
-    .from(wnbaLeagues)
-    .where(eq(wnbaLeagues.id, leagueId))
+    .select({ commissionerId: mnsLeagues.commissionerId })
+    .from(mnsLeagues)
+    .where(eq(mnsLeagues.id, leagueId))
     .limit(1)
   return row?.commissionerId === userId
 }
 
 export async function isTeamOwner(userId: string, teamId: string): Promise<boolean> {
   const [row] = await db
-    .select({ userId: wnbaTeamOwners.userId })
-    .from(wnbaTeamOwners)
-    .where(and(eq(wnbaTeamOwners.teamId, teamId), eq(wnbaTeamOwners.userId, userId)))
+    .select({ userId: mnsTeamOwners.userId })
+    .from(mnsTeamOwners)
+    .where(and(eq(mnsTeamOwners.teamId, teamId), eq(mnsTeamOwners.userId, userId)))
     .limit(1)
   return !!row
 }
