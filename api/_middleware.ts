@@ -20,12 +20,6 @@ export async function verifyAuth(req: VercelRequest): Promise<string | null> {
 }
 
 export async function isSiteAdmin(userId: string): Promise<boolean> {
-  const envAdmins = (process.env.ADMIN_USER_IDS || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-  if (envAdmins.includes(userId)) return true
-
   const [row] = await db
     .select({ role: users.role })
     .from(users)
