@@ -75,10 +75,10 @@ export function Home() {
               Money Never Sleeps
             </h1>
 
-            <div className="inline-flex items-center gap-2 px-6 py-2 mb-6 bg-green-400/10 border-2 border-green-400 rounded-full text-green-400 text-base sm:text-lg font-bold tracking-widest uppercase shadow-[0_0_30px_rgba(74,222,128,0.4)]">
+            <div className="inline-flex items-center gap-2 px-6 py-2 mb-6 bg-pink-400/10 border-2 border-pink-400 rounded-full text-pink-400 text-base sm:text-lg font-bold tracking-widest uppercase shadow-[0_0_30px_rgba(244,114,182,0.5)]">
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-pink-400"></span>
               </span>
               WNBA Edition · {branding.identity.seasonLabel.split(' ')[0]}
             </div>
