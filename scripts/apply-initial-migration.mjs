@@ -40,7 +40,7 @@ for (let i = 0; i < statements.length; i++) {
   const stmt = statements[i]
   const preview = stmt.replace(/\s+/g, ' ').slice(0, 80)
   try {
-    await sql(stmt)
+    await sql.query(stmt)
     applied++
     console.log(`✓ [${i + 1}/${statements.length}] ${preview}`)
   } catch (err) {
