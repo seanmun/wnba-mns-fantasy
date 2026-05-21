@@ -28,3 +28,7 @@ export const telegramAlertSchema = z.object({
   botType: z.enum(['alert', 'draft']),
   chatId: z.string().optional(),
 })
+
+export const createLeagueSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+})
