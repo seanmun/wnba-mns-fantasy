@@ -220,6 +220,55 @@ export function AdminLeague() {
               setConfig({ ...config, draft: { ...config.draft, rookieRounds: Number(v) } })
             }
           />
+          <NumRow
+            label="Rookie Years Tracked (future tradeable picks)"
+            value={config.draft.rookieYearsTracked}
+            onChange={(v) =>
+              setConfig({
+                ...config,
+                draft: { ...config.draft, rookieYearsTracked: Number(v) },
+              })
+            }
+          />
+          <Row label="Rookie Order Method">
+            <select
+              value={config.draft.rookieOrderMethod}
+              onChange={(e) =>
+                setConfig({
+                  ...config,
+                  draft: {
+                    ...config.draft,
+                    rookieOrderMethod: e.target.value as
+                      | 'lottery'
+                      | 'manual'
+                      | 'season_record',
+                  },
+                })
+              }
+              className={inputClass}
+            >
+              <option value="manual">Manual (commissioner sets order)</option>
+              <option value="lottery">Lottery (weighted random by record)</option>
+              <option value="season_record">Season record (worst → best)</option>
+            </select>
+          </Row>
+          <Row label="Admin Pick Override">
+            <Toggle
+              value={config.draft.allowAdminOverride}
+              onChange={(v) =>
+                setConfig({
+                  ...config,
+                  draft: { ...config.draft, allowAdminOverride: v },
+                })
+              }
+            />
+          </Row>
+          <p className="text-xs text-gray-500 pt-2">
+            Future tradeable picks = {config.draft.rookieRounds} round
+            {config.draft.rookieRounds === 1 ? '' : 's'} × {config.draft.rookieYearsTracked} year
+            {config.draft.rookieYearsTracked === 1 ? '' : 's'} = {config.draft.rookieRounds * config.draft.rookieYearsTracked} pick
+            {config.draft.rookieRounds * config.draft.rookieYearsTracked === 1 ? '' : 's'} per team.
+          </p>
         </Section>
 
         <Section title="Salary Cap (dollars)">
