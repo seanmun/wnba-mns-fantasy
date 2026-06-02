@@ -125,9 +125,26 @@ export function AdminTeams() {
                 </div>
                 <div className="text-sm text-gray-400">
                   <span className="text-gray-500">Owners:</span>{' '}
-                  {team.owners
-                    .map((o) => o.email + (o.userId ? '' : ' (pending)'))
-                    .join(', ') || '—'}
+                  {team.owners.length === 0
+                    ? '—'
+                    : team.owners.map((o, i) => (
+                        <span key={o.email}>
+                          {i > 0 && ', '}
+                          {o.displayName ? (
+                            <>
+                              <span className="text-white">{o.displayName}</span>
+                              <span className="text-gray-500"> ({o.email})</span>
+                            </>
+                          ) : (
+                            <span>{o.email}</span>
+                          )}
+                          {!o.userId && (
+                            <span className="text-yellow-500 ml-1 text-xs">
+                              (pending)
+                            </span>
+                          )}
+                        </span>
+                      ))}
                 </div>
               </div>
             ))}

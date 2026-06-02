@@ -21,7 +21,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: parsed.error })
   }
 
-  const { email, displayName, avatarUrl } = parsed.data
+  const { displayName, avatarUrl } = parsed.data
+  // Normalize: invite emails are lowercased on create. Match against same.
+  const email = parsed.data.email.toLowerCase()
   const avatar = avatarUrl ?? null
 
   try {
@@ -35,10 +37,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Link any pending team-owner invites that were sent to this email
     // before the user had signed up. Idempotent: only touches rows where
-    // user_id is still null.
+    // user_id is still null. Also fills display_name from Clerk so the
+    // team page shows the owner's real name once they're linked.
     const linked = await db
       .update(mnsTeamOwners)
-      .set({ userId })
+      .set({ userId, displayName })
       .where(and(eq(mnsTeamOwners.email, email), isNull(mnsTeamOwners.userId)))
       .returning({ teamId: mnsTeamOwners.teamId })
 

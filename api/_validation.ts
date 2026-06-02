@@ -33,6 +33,18 @@ export const createLeagueSchema = z.object({
   name: z.string().trim().min(1).max(100),
 })
 
+export const updateLeagueSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100).optional(),
+    // config is the full LeagueConfig object. v1 trusts shape from the
+    // client; tighter nested validation lands when the rule engine
+    // grows constraints we care about enforcing server-side.
+    config: z.any().optional(),
+  })
+  .refine((d) => d.name !== undefined || d.config !== undefined, {
+    message: 'Provide at least one of name or config',
+  })
+
 export const createTeamSchema = z.object({
   name: z.string().trim().min(1).max(50),
   abbrev: z.string().trim().min(1).max(6).toUpperCase(),
