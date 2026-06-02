@@ -32,3 +32,13 @@ export const telegramAlertSchema = z.object({
 export const createLeagueSchema = z.object({
   name: z.string().trim().min(1).max(100),
 })
+
+export const createTeamSchema = z.object({
+  name: z.string().trim().min(1).max(50),
+  abbrev: z.string().trim().min(1).max(6).toUpperCase(),
+  ownerEmails: z
+    .array(z.string().trim().toLowerCase().email())
+    .min(1)
+    .max(5),
+  telegramUsername: z.string().trim().max(50).optional().nullable(),
+})
