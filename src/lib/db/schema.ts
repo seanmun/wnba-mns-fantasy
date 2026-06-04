@@ -28,7 +28,11 @@ import type {
   PickTradeHistoryEntry,
 } from '../../types/draft'
 import type { TradeAsset } from '../../types/trade'
-import type { RookieDraftInfo, MigrationSource } from '../../types/player'
+import type {
+  ExternalIds,
+  RookieDraftInfo,
+  MigrationSource,
+} from '../../types/player'
 
 // ============================================================================
 // SHARED TABLES (cross-game on the same Neon DB)
@@ -136,7 +140,13 @@ export const mnsPlayers = pgTable(
   'mns_players',
   {
     id: text('id').primaryKey(),
-    fantraxId: text('fantrax_id').notNull().unique(),
+    // Platform-specific identifiers (fantrax, hhs, wnba, yahoo, espn, ...).
+    // Replaces the NBA-era `fantrax_id NOT NULL UNIQUE` constraint — WNBA
+    // players don't have a fantrax id because Fantrax doesn't cover the W.
+    externalIds: jsonb('external_ids')
+      .$type<ExternalIds>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     name: text('name').notNull(),
     position: text('position').notNull(),
     salary: bigint('salary', { mode: 'number' }).notNull().default(0),
@@ -608,49 +618,65 @@ export const mnsWatchlists = pgTable(
 // STATS
 // ============================================================================
 
-export const mnsProjectedStats = pgTable('mns_projected_stats', {
-  fantraxId: text('fantrax_id').primaryKey(),
-  name: text('name').notNull(),
-  teamCode: text('team_code').notNull().default(''),
-  position: text('position').notNull().default(''),
-  rkOv: integer('rk_ov'),
-  age: integer('age'),
-  salary: bigint('salary', { mode: 'number' }),
-  score: numeric('score', { precision: 8, scale: 2 }),
-  adp: numeric('adp', { precision: 8, scale: 2 }),
-  fgPercent: numeric('fg_percent', { precision: 5, scale: 3 }),
-  threePointMade: numeric('three_point_made', { precision: 6, scale: 2 }),
-  ftPercent: numeric('ft_percent', { precision: 5, scale: 3 }),
-  points: numeric('points', { precision: 6, scale: 2 }),
-  rebounds: numeric('rebounds', { precision: 6, scale: 2 }),
-  assists: numeric('assists', { precision: 6, scale: 2 }),
-  steals: numeric('steals', { precision: 6, scale: 2 }),
-  blocks: numeric('blocks', { precision: 6, scale: 2 }),
-  assistToTurnover: numeric('assist_to_turnover', { precision: 6, scale: 2 }),
-  salaryScore: numeric('salary_score', { precision: 8, scale: 2 }),
-  seasonYear: text('season_year').notNull().default('2025-26'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-})
+// Keyed by player_id (FK to mns_players). One projected-stats row per
+// player per season; PK includes season_year to support multi-season
+// projections cohabiting if we ever need them. seasonYear default
+// kept for backwards-compat with the WNBA scraper output.
+export const mnsProjectedStats = pgTable(
+  'mns_projected_stats',
+  {
+    playerId: text('player_id')
+      .notNull()
+      .references(() => mnsPlayers.id, { onDelete: 'cascade' }),
+    seasonYear: text('season_year').notNull().default('2025-26'),
+    name: text('name').notNull(),
+    teamCode: text('team_code').notNull().default(''),
+    position: text('position').notNull().default(''),
+    rkOv: integer('rk_ov'),
+    age: integer('age'),
+    salary: bigint('salary', { mode: 'number' }),
+    score: numeric('score', { precision: 8, scale: 2 }),
+    adp: numeric('adp', { precision: 8, scale: 2 }),
+    fgPercent: numeric('fg_percent', { precision: 5, scale: 3 }),
+    threePointMade: numeric('three_point_made', { precision: 6, scale: 2 }),
+    ftPercent: numeric('ft_percent', { precision: 5, scale: 3 }),
+    points: numeric('points', { precision: 6, scale: 2 }),
+    rebounds: numeric('rebounds', { precision: 6, scale: 2 }),
+    assists: numeric('assists', { precision: 6, scale: 2 }),
+    steals: numeric('steals', { precision: 6, scale: 2 }),
+    blocks: numeric('blocks', { precision: 6, scale: 2 }),
+    assistToTurnover: numeric('assist_to_turnover', { precision: 6, scale: 2 }),
+    salaryScore: numeric('salary_score', { precision: 8, scale: 2 }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.playerId, t.seasonYear] })]
+)
 
-export const mnsPreviousStats = pgTable('mns_previous_stats', {
-  fantraxId: text('fantrax_id').primaryKey(),
-  name: text('name').notNull(),
-  teamCode: text('team_code').notNull().default(''),
-  position: text('position').notNull().default(''),
-  fgPercent: numeric('fg_percent', { precision: 5, scale: 3 }),
-  threePointMade: numeric('three_point_made', { precision: 6, scale: 2 }),
-  ftPercent: numeric('ft_percent', { precision: 5, scale: 3 }),
-  points: numeric('points', { precision: 6, scale: 2 }),
-  rebounds: numeric('rebounds', { precision: 6, scale: 2 }),
-  assists: numeric('assists', { precision: 6, scale: 2 }),
-  steals: numeric('steals', { precision: 6, scale: 2 }),
-  blocks: numeric('blocks', { precision: 6, scale: 2 }),
-  assistToTurnover: numeric('assist_to_turnover', { precision: 6, scale: 2 }),
-  seasonYear: text('season_year').notNull().default('2024-25'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-})
+export const mnsPreviousStats = pgTable(
+  'mns_previous_stats',
+  {
+    playerId: text('player_id')
+      .notNull()
+      .references(() => mnsPlayers.id, { onDelete: 'cascade' }),
+    seasonYear: text('season_year').notNull().default('2024-25'),
+    name: text('name').notNull(),
+    teamCode: text('team_code').notNull().default(''),
+    position: text('position').notNull().default(''),
+    fgPercent: numeric('fg_percent', { precision: 5, scale: 3 }),
+    threePointMade: numeric('three_point_made', { precision: 6, scale: 2 }),
+    ftPercent: numeric('ft_percent', { precision: 5, scale: 3 }),
+    points: numeric('points', { precision: 6, scale: 2 }),
+    rebounds: numeric('rebounds', { precision: 6, scale: 2 }),
+    assists: numeric('assists', { precision: 6, scale: 2 }),
+    steals: numeric('steals', { precision: 6, scale: 2 }),
+    blocks: numeric('blocks', { precision: 6, scale: 2 }),
+    assistToTurnover: numeric('assist_to_turnover', { precision: 6, scale: 2 }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.playerId, t.seasonYear] })]
+)
 
 // ============================================================================
 // PROSPECTS

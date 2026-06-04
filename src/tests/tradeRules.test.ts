@@ -7,7 +7,7 @@ import type { RosterEntry } from '../types/roster'
 function makePlayer(over: Partial<Player> = {}): Player {
   return {
     id: 'p',
-    fantraxId: 'p',
+    externalIds: {},
     name: 'P',
     position: 'G',
     salary: 100_000,
