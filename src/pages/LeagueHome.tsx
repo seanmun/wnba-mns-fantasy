@@ -1,10 +1,19 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
 import { toast } from 'sonner'
 import { useApi } from '../hooks/useApi'
 import { useLeague } from '../contexts/LeagueContext'
 import { LEAGUE_PHASE_LABELS } from '../types/league'
+
+interface SetupStatus {
+  teamsCount: number
+  playersPoolCount: number
+  playersAssignedCount: number
+  keepersLocked: boolean
+  rookiePicksCount: number
+  draftStatus: string | null
+}
 
 export function LeagueHome() {
   const { leagueId } = useParams<{ leagueId: string }>()
@@ -82,6 +91,28 @@ export function LeagueHome() {
 }
 
 function CommissionerChecklist({ leagueId }: { leagueId: string }) {
+  const { apiFetch } = useApi()
+  const [status, setStatus] = useState<SetupStatus | null>(null)
+
+  const refresh = useCallback(async () => {
+    try {
+      const s = await apiFetch<SetupStatus>(`/api/leagues/${leagueId}/setup-status`)
+      setStatus(s)
+    } catch {
+      // silent — leave status null, steps stay grey
+    }
+  }, [apiFetch, leagueId])
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  const doneTeams = (status?.teamsCount ?? 0) > 0
+  const donePool = (status?.playersPoolCount ?? 0) > 0
+  const doneAssign = (status?.playersAssignedCount ?? 0) > 0
+  const doneKeepers = !!status?.keepersLocked && (status?.rookiePicksCount ?? 0) > 0
+  const doneDraft = !!status?.draftStatus && status.draftStatus !== 'setup'
+
   return (
     <section className="mb-10">
       <div className="flex items-center justify-between mb-4">
@@ -93,28 +124,40 @@ function CommissionerChecklist({ leagueId }: { leagueId: string }) {
       <div className="bg-mns-card border border-gray-800 rounded-lg divide-y divide-gray-800">
         <StaticStep
           n={1}
+          done={doneTeams}
           title="Add teams"
-          description="Create 4-12 teams and invite owners by email."
-          cta="Add teams"
+          description={
+            doneTeams
+              ? `${status?.teamsCount} team${status?.teamsCount === 1 ? '' : 's'} in this league.`
+              : 'Create 4-12 teams and invite owners by email.'
+          }
+          cta={doneTeams ? 'Manage teams' : 'Add teams'}
           href="/lm/teams"
         />
         <StaticStep
           n={2}
+          done={false}
           title="Configure league rules"
           description="Override cap, fees, schedule, scoring — anything from the WNBA preset."
           cta="League settings"
           href="/lm/league"
         />
-        <PopulatePoolStep leagueId={leagueId} n={3} />
+        <PopulatePoolStep leagueId={leagueId} n={3} done={donePool} count={status?.playersPoolCount ?? 0} onRefresh={refresh} />
         <StaticStep
           n={4}
+          done={doneAssign}
           title="Import / assign rosters"
-          description="Assign players to teams. Capture prior keeper rounds per player so keepers don't default to round 13."
-          cta="Roster import"
+          description={
+            doneAssign
+              ? `${status?.playersAssignedCount} player${status?.playersAssignedCount === 1 ? '' : 's'} assigned to teams.`
+              : 'Assign players to teams. Capture prior keeper rounds per player so keepers don\'t default to round 13.'
+          }
+          cta={doneAssign ? 'Manage rosters' : 'Roster import'}
           href="/lm/roster-import"
         />
         <StaticStep
           n={5}
+          done={doneKeepers}
           title="Lock keepers, set rookie picks"
           description="Once owners submit, lock the keeper phase. Assign rookie draft picks."
           cta="Rookie picks"
@@ -122,8 +165,13 @@ function CommissionerChecklist({ leagueId }: { leagueId: string }) {
         />
         <StaticStep
           n={6}
+          done={doneDraft}
           title="Set up the draft"
-          description="Configure draft order, slot keeper picks into rounds, start the draft."
+          description={
+            doneDraft
+              ? `Draft status: ${status?.draftStatus}.`
+              : 'Configure draft order, slot keeper picks into rounds, start the draft.'
+          }
           cta="Draft setup"
           href="/lm/draft-setup"
         />
@@ -137,12 +185,14 @@ function CommissionerChecklist({ leagueId }: { leagueId: string }) {
 
 function StaticStep({
   n,
+  done,
   title,
   description,
   cta,
   href,
 }: {
   n: number
+  done: boolean
   title: string
   description: string
   cta: string
@@ -150,7 +200,7 @@ function StaticStep({
 }) {
   return (
     <div className="p-5 flex items-start gap-4">
-      <StepNumber n={n} />
+      <StepNumber n={n} done={done} />
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-white">{title}</div>
         <p className="text-sm text-gray-400 mt-1">{description}</p>
@@ -165,7 +215,28 @@ function StaticStep({
   )
 }
 
-function StepNumber({ n }: { n: number }) {
+function StepNumber({ n, done }: { n: number; done: boolean }) {
+  if (done) {
+    return (
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-400/15 border-2 border-green-400 flex items-center justify-center text-green-400 font-bold text-sm">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="14"
+          height="14"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path
+            fillRule="evenodd"
+            d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.5 7.6a1 1 0 0 1-1.42.005l-4-4a1 1 0 1 1 1.414-1.414l3.29 3.29 6.793-6.889a1 1 0 0 1 1.417-.006Z"
+            clipRule="evenodd"
+          />
+        </svg>
+        <span className="sr-only">Step {n} complete</span>
+      </div>
+    )
+  }
   return (
     <div className="flex-shrink-0 w-8 h-8 rounded-full border-2 border-gray-700 flex items-center justify-center text-gray-500 font-bold text-sm">
       {n}
@@ -173,7 +244,19 @@ function StepNumber({ n }: { n: number }) {
   )
 }
 
-function PopulatePoolStep({ leagueId, n }: { leagueId: string; n: number }) {
+function PopulatePoolStep({
+  leagueId,
+  n,
+  done,
+  count,
+  onRefresh,
+}: {
+  leagueId: string
+  n: number
+  done: boolean
+  count: number
+  onRefresh: () => void
+}) {
   const { apiFetch } = useApi()
   const [running, setRunning] = useState(false)
 
@@ -188,6 +271,7 @@ function PopulatePoolStep({ leagueId, n }: { leagueId: string; n: number }) {
       toast.success(
         `Player pool: ${result.totalScraped} scraped · ${result.inserted} new · ${result.updated} updated`
       )
+      onRefresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Player pool population failed')
     } finally {
@@ -197,12 +281,13 @@ function PopulatePoolStep({ leagueId, n }: { leagueId: string; n: number }) {
 
   return (
     <div className="p-5 flex items-start gap-4">
-      <StepNumber n={n} />
+      <StepNumber n={n} done={done} />
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-white">Populate player pool</div>
         <p className="text-sm text-gray-400 mt-1">
-          Scrapes Her Hoop Stats for the full WNBA player pool with current
-          salaries. Safe to re-run — updates existing rows instead of duplicating.
+          {done
+            ? `${count} WNBA players in this league's pool. Safe to re-run to refresh salaries.`
+            : 'Scrapes Her Hoop Stats for the full WNBA player pool with current salaries.'}
         </p>
       </div>
       <button
@@ -210,7 +295,7 @@ function PopulatePoolStep({ leagueId, n }: { leagueId: string; n: number }) {
         disabled={running}
         className="flex-shrink-0 px-3 py-1.5 text-sm bg-green-500 hover:bg-green-400 disabled:bg-gray-700 disabled:text-gray-500 text-black font-semibold rounded-lg transition-colors whitespace-nowrap"
       >
-        {running ? 'Scraping…' : 'Populate pool'}
+        {running ? 'Scraping…' : done ? 'Re-scrape' : 'Populate pool'}
       </button>
     </div>
   )
