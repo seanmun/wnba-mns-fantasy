@@ -45,6 +45,19 @@ export const updateLeagueSchema = z
     message: 'Provide at least one of name or config',
   })
 
+export const bulkRosterRowSchema = z.object({
+  playerName: z.string().trim().min(1),
+  teamAbbrev: z.string().trim().min(1).max(6).toUpperCase().optional().nullable(),
+  slot: z.enum(['active', 'bench', 'ir', 'redshirt', 'international']).optional(),
+  position: z.string().trim().min(1).max(20).optional(),
+  keeperPriorYearRound: z.number().int().min(1).max(20).nullable().optional(),
+  isRookie: z.boolean().optional(),
+})
+
+export const bulkRosterImportSchema = z.object({
+  rows: z.array(bulkRosterRowSchema).min(1).max(500),
+})
+
 export const updatePlayerSchema = z
   .object({
     teamId: z.string().nullable().optional(),
