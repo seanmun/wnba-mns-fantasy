@@ -45,6 +45,20 @@ export const updateLeagueSchema = z
     message: 'Provide at least one of name or config',
   })
 
+export const updatePlayerSchema = z
+  .object({
+    teamId: z.string().nullable().optional(),
+    slot: z.enum(['active', 'bench', 'ir', 'redshirt', 'international']).optional(),
+    position: z.string().trim().min(1).max(20).optional(),
+    keeperPriorYearRound: z.number().int().min(1).max(20).nullable().optional(),
+    migratedKeeperRound: z.number().int().min(1).max(20).nullable().optional(),
+    isRookie: z.boolean().optional(),
+    intEligible: z.boolean().optional(),
+  })
+  .refine((d) => Object.keys(d).length > 0, {
+    message: 'No fields to update',
+  })
+
 export const createTeamSchema = z.object({
   name: z.string().trim().min(1).max(50),
   abbrev: z.string().trim().min(1).max(6).toUpperCase(),
