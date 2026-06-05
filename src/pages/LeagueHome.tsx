@@ -1,5 +1,8 @@
+import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
+import { toast } from 'sonner'
+import { useApi } from '../hooks/useApi'
 import { useLeague } from '../contexts/LeagueContext'
 import { LEAGUE_PHASE_LABELS } from '../types/league'
 
@@ -79,73 +82,51 @@ export function LeagueHome() {
 }
 
 function CommissionerChecklist({ leagueId }: { leagueId: string }) {
-  const steps = [
-    {
-      done: false,
-      title: 'Add teams',
-      description: 'Create 8-12 teams and invite owners by email.',
-      cta: 'Add teams',
-      href: '/lm/teams',
-    },
-    {
-      done: false,
-      title: 'Configure league rules',
-      description: 'Override cap, fees, schedule, scoring — anything from the WNBA preset.',
-      cta: 'League settings',
-      href: '/lm/league',
-    },
-    {
-      done: false,
-      title: 'Import the player roster',
-      description: 'Upload your existing ESPN/Yahoo roster as CSV. Capture prior keeper rounds per player.',
-      cta: 'Import roster',
-      href: '/lm/roster-import',
-    },
-    {
-      done: false,
-      title: 'Lock keepers, set rookie picks',
-      description: 'Once owners submit, lock the keeper phase. Assign rookie draft picks.',
-      cta: 'Rookie picks',
-      href: '/lm/rookie-picks',
-    },
-    {
-      done: false,
-      title: 'Set up the draft',
-      description: 'Configure draft order, slot keeper picks into rounds, start the draft.',
-      cta: 'Draft setup',
-      href: '/lm/draft-setup',
-    },
-  ]
-
   return (
     <section className="mb-10">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold">Commissioner Setup</h2>
-        <Link
-          to="/lm"
-          className="text-sm text-green-400 hover:text-green-300"
-        >
+        <Link to="/lm" className="text-sm text-green-400 hover:text-green-300">
           Open LM hub →
         </Link>
       </div>
       <div className="bg-mns-card border border-gray-800 rounded-lg divide-y divide-gray-800">
-        {steps.map((step, i) => (
-          <div key={i} className="p-5 flex items-start gap-4">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full border-2 border-gray-700 flex items-center justify-center text-gray-500 font-bold text-sm">
-              {i + 1}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold text-white">{step.title}</div>
-              <p className="text-sm text-gray-400 mt-1">{step.description}</p>
-            </div>
-            <Link
-              to={step.href}
-              className="flex-shrink-0 px-3 py-1.5 text-sm bg-green-500 hover:bg-green-400 text-black font-semibold rounded-lg transition-colors whitespace-nowrap"
-            >
-              {step.cta}
-            </Link>
-          </div>
-        ))}
+        <StaticStep
+          n={1}
+          title="Add teams"
+          description="Create 4-12 teams and invite owners by email."
+          cta="Add teams"
+          href="/lm/teams"
+        />
+        <StaticStep
+          n={2}
+          title="Configure league rules"
+          description="Override cap, fees, schedule, scoring — anything from the WNBA preset."
+          cta="League settings"
+          href="/lm/league"
+        />
+        <PopulatePoolStep leagueId={leagueId} n={3} />
+        <StaticStep
+          n={4}
+          title="Import / assign rosters"
+          description="Assign players to teams. Capture prior keeper rounds per player so keepers don't default to round 13."
+          cta="Roster import"
+          href="/lm/roster-import"
+        />
+        <StaticStep
+          n={5}
+          title="Lock keepers, set rookie picks"
+          description="Once owners submit, lock the keeper phase. Assign rookie draft picks."
+          cta="Rookie picks"
+          href="/lm/rookie-picks"
+        />
+        <StaticStep
+          n={6}
+          title="Set up the draft"
+          description="Configure draft order, slot keeper picks into rounds, start the draft."
+          cta="Draft setup"
+          href="/lm/draft-setup"
+        />
       </div>
       <p className="mt-3 text-xs text-gray-500">
         League ID: <code className="text-gray-400">{leagueId}</code>
@@ -153,3 +134,85 @@ function CommissionerChecklist({ leagueId }: { leagueId: string }) {
     </section>
   )
 }
+
+function StaticStep({
+  n,
+  title,
+  description,
+  cta,
+  href,
+}: {
+  n: number
+  title: string
+  description: string
+  cta: string
+  href: string
+}) {
+  return (
+    <div className="p-5 flex items-start gap-4">
+      <StepNumber n={n} />
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold text-white">{title}</div>
+        <p className="text-sm text-gray-400 mt-1">{description}</p>
+      </div>
+      <Link
+        to={href}
+        className="flex-shrink-0 px-3 py-1.5 text-sm bg-green-500 hover:bg-green-400 text-black font-semibold rounded-lg transition-colors whitespace-nowrap"
+      >
+        {cta}
+      </Link>
+    </div>
+  )
+}
+
+function StepNumber({ n }: { n: number }) {
+  return (
+    <div className="flex-shrink-0 w-8 h-8 rounded-full border-2 border-gray-700 flex items-center justify-center text-gray-500 font-bold text-sm">
+      {n}
+    </div>
+  )
+}
+
+function PopulatePoolStep({ leagueId, n }: { leagueId: string; n: number }) {
+  const { apiFetch } = useApi()
+  const [running, setRunning] = useState(false)
+
+  const handleRun = async () => {
+    setRunning(true)
+    try {
+      const result = await apiFetch<{
+        totalScraped: number
+        inserted: number
+        updated: number
+      }>(`/api/leagues/${leagueId}/players/populate-pool`, { method: 'POST' })
+      toast.success(
+        `Player pool: ${result.totalScraped} scraped · ${result.inserted} new · ${result.updated} updated`
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Player pool population failed')
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <div className="p-5 flex items-start gap-4">
+      <StepNumber n={n} />
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold text-white">Populate player pool</div>
+        <p className="text-sm text-gray-400 mt-1">
+          Scrapes Her Hoop Stats for the full WNBA player pool with current
+          salaries. Safe to re-run — updates existing rows instead of duplicating.
+        </p>
+      </div>
+      <button
+        onClick={handleRun}
+        disabled={running}
+        className="flex-shrink-0 px-3 py-1.5 text-sm bg-green-500 hover:bg-green-400 disabled:bg-gray-700 disabled:text-gray-500 text-black font-semibold rounded-lg transition-colors whitespace-nowrap"
+      >
+        {running ? 'Scraping…' : 'Populate pool'}
+      </button>
+    </div>
+  )
+}
+
