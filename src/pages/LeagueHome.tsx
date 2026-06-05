@@ -146,14 +146,14 @@ function CommissionerChecklist({ leagueId }: { leagueId: string }) {
         <StaticStep
           n={4}
           done={doneAssign}
-          title="Import / assign rosters"
+          title="Assign players to teams"
           description={
             doneAssign
-              ? `${status?.playersAssignedCount} player${status?.playersAssignedCount === 1 ? '' : 's'} assigned to teams.`
-              : 'Assign players to teams. Capture prior keeper rounds per player so keepers don\'t default to round 13.'
+              ? `${status?.playersAssignedCount} player${status?.playersAssignedCount === 1 ? '' : 's'} assigned to teams. Bulk CSV available at /lm/roster-import.`
+              : 'Search players from the pool, pick their team, set their prior keeper round.'
           }
-          cta={doneAssign ? 'Manage rosters' : 'Roster import'}
-          href="/lm/roster-import"
+          cta="Manage rosters"
+          href="/lm/rosters"
         />
         <StaticStep
           n={5}
