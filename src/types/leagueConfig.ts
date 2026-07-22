@@ -1,4 +1,13 @@
 export type Sport = 'wnba' | 'nba'
+export type EntryPhase = 'rookie_draft' | 'keeper_season' | 'draft' | 'regular_season'
+export type RosterSource = 'fresh' | 'import'
+
+// Where a league enters the season lifecycle. Chosen once by the
+// commissioner on league home; steps before entryPhase are N/A.
+export interface LeagueSetup {
+  entryPhase: EntryPhase
+  rosterSource: RosterSource
+}
 export type ScoringModeId = 'matchup_record' | 'category_record'
 export type DraftType = 'snake' | 'auction'
 export type RookieOrderMethod = 'lottery' | 'manual' | 'season_record'
@@ -6,6 +15,8 @@ export type KeeperAdvanceRule = 'minus_one' | 'flat' | 'custom'
 
 export interface LeagueConfig {
   sport: Sport
+  // Absent until the commissioner picks a starting scenario.
+  setup?: LeagueSetup
   season: {
     year: number
     startDate: string

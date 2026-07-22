@@ -17,6 +17,7 @@ export interface SetupStatus {
   keepersLocked: boolean
   rookiePicksCount: number
   draftStatus: string | null
+  seasonStarted: boolean
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -32,7 +33,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const [league] = await db
-      .select({ keepersLocked: mnsLeagues.keepersLocked })
+      .select({
+        keepersLocked: mnsLeagues.keepersLocked,
+        seasonStartedAt: mnsLeagues.seasonStartedAt,
+      })
       .from(mnsLeagues)
       .where(eq(mnsLeagues.id, leagueId))
       .limit(1)
@@ -70,6 +74,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       keepersLocked: league.keepersLocked,
       rookiePicksCount: rookieRow[0]?.n ?? 0,
       draftStatus: draftRow[0]?.status ?? null,
+      seasonStarted: league.seasonStartedAt !== null,
     }
     return res.status(200).json(status)
   } catch (err) {

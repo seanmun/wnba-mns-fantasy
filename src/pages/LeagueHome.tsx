@@ -4,7 +4,8 @@ import { useUser } from '@clerk/clerk-react'
 import { toast } from 'sonner'
 import { useApi } from '../hooks/useApi'
 import { useLeague } from '../contexts/LeagueContext'
-import { LEAGUE_PHASE_LABELS } from '../types/league'
+import { LEAGUE_PHASE_LABELS, type LeaguePhase, type League } from '../types/league'
+import type { LeagueSetup } from '../types/leagueConfig'
 
 interface SetupStatus {
   teamsCount: number
@@ -13,12 +14,45 @@ interface SetupStatus {
   keepersLocked: boolean
   rookiePicksCount: number
   draftStatus: string | null
+  seasonStarted: boolean
 }
+
+const SCENARIOS: Array<{
+  label: string
+  description: string
+  setup: LeagueSetup
+}> = [
+  {
+    label: 'Brand new league',
+    description:
+      'Fresh start — empty rosters, everyone enters the draft pool. Draft now or schedule it later.',
+    setup: { entryPhase: 'draft', rosterSource: 'fresh' },
+  },
+  {
+    label: 'Importing — before the rookie draft',
+    description:
+      'Bring in prior-year rosters and keeper rounds, then run the full cycle: keepers, rookie draft, veteran draft.',
+    setup: { entryPhase: 'rookie_draft', rosterSource: 'import' },
+  },
+  {
+    label: 'Importing — rookie draft already happened',
+    description:
+      'Rosters include drafted rookies. Record rookie results, run keepers and the veteran draft in-app.',
+    setup: { entryPhase: 'keeper_season', rosterSource: 'import' },
+  },
+  {
+    label: 'Importing — mid-season',
+    description:
+      'Rosters are final (including IR/redshirts). Skip all draft steps and go straight to the regular season.',
+    setup: { entryPhase: 'regular_season', rosterSource: 'import' },
+  },
+]
 
 export function LeagueHome() {
   const { leagueId } = useParams<{ leagueId: string }>()
   const { user } = useUser()
   const { userLeagues, loading } = useLeague()
+  const [phaseOverride, setPhaseOverride] = useState<LeaguePhase | null>(null)
 
   if (loading) {
     return (
@@ -48,6 +82,7 @@ export function LeagueHome() {
   }
 
   const isCommissioner = league.commissionerId === user?.id
+  const leaguePhase = phaseOverride ?? league.leaguePhase
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
@@ -65,13 +100,18 @@ export function LeagueHome() {
           <span>{league.sport.toUpperCase()} · {league.seasonYear}</span>
           <span className="text-gray-600">·</span>
           <span className="text-pink-400 font-semibold">
-            {LEAGUE_PHASE_LABELS[league.leaguePhase]}
+            {LEAGUE_PHASE_LABELS[leaguePhase]}
           </span>
         </div>
       </div>
 
       {/* Commissioner next steps */}
-      {isCommissioner && <CommissionerChecklist leagueId={league.id} />}
+      {isCommissioner && (
+        <CommissionerChecklist
+          league={league}
+          onSeasonStarted={() => setPhaseOverride('regular_season')}
+        />
+      )}
 
       {/* Teams placeholder */}
       <section className="mb-8">
@@ -90,9 +130,20 @@ export function LeagueHome() {
   )
 }
 
-function CommissionerChecklist({ leagueId }: { leagueId: string }) {
+function CommissionerChecklist({
+  league,
+  onSeasonStarted,
+}: {
+  league: League
+  onSeasonStarted: () => void
+}) {
   const { apiFetch } = useApi()
   const [status, setStatus] = useState<SetupStatus | null>(null)
+  const [setup, setSetup] = useState<LeagueSetup | null>(
+    league.config.setup ?? null
+  )
+
+  const leagueId = league.id
 
   const refresh = useCallback(async () => {
     try {
@@ -107,11 +158,29 @@ function CommissionerChecklist({ leagueId }: { leagueId: string }) {
     void refresh()
   }, [refresh])
 
+  if (!setup) {
+    return (
+      <ScenarioSelector
+        league={league}
+        onSaved={(s) => setSetup(s)}
+      />
+    )
+  }
+
+  const showAssign = setup.rosterSource === 'import'
+  const showKeepers =
+    setup.entryPhase === 'rookie_draft' || setup.entryPhase === 'keeper_season'
+  const showDraft = setup.entryPhase !== 'regular_season'
+
   const doneTeams = (status?.teamsCount ?? 0) > 0
   const donePool = (status?.playersPoolCount ?? 0) > 0
   const doneAssign = (status?.playersAssignedCount ?? 0) > 0
   const doneKeepers = !!status?.keepersLocked && (status?.rookiePicksCount ?? 0) > 0
   const doneDraft = !!status?.draftStatus && status.draftStatus !== 'setup'
+  const seasonStarted = !!status?.seasonStarted
+
+  let n = 0
+  const num = () => ++n
 
   return (
     <section className="mb-10">
@@ -123,7 +192,7 @@ function CommissionerChecklist({ leagueId }: { leagueId: string }) {
       </div>
       <div className="bg-mns-card border border-gray-800 rounded-lg divide-y divide-gray-800">
         <StaticStep
-          n={1}
+          n={num()}
           done={doneTeams}
           title="Add teams"
           description={
@@ -135,51 +204,181 @@ function CommissionerChecklist({ leagueId }: { leagueId: string }) {
           href="/lm/teams"
         />
         <StaticStep
-          n={2}
+          n={num()}
           done={false}
           title="Configure league rules"
           description="Override cap, fees, schedule, scoring — anything from the WNBA preset."
           cta="League settings"
           href="/lm/league"
         />
-        <PopulatePoolStep leagueId={leagueId} n={3} done={donePool} count={status?.playersPoolCount ?? 0} onRefresh={refresh} />
-        <StaticStep
-          n={4}
-          done={doneAssign}
-          title="Assign players to teams"
-          description={
-            doneAssign
-              ? `${status?.playersAssignedCount} player${status?.playersAssignedCount === 1 ? '' : 's'} assigned to teams. Bulk CSV available at /lm/roster-import.`
-              : 'Search players from the pool, pick their team, set their prior keeper round.'
-          }
-          cta="Manage rosters"
-          href="/lm/rosters"
-        />
-        <StaticStep
-          n={5}
-          done={doneKeepers}
-          title="Lock keepers, set rookie picks"
-          description="Once owners submit, lock the keeper phase. Assign rookie draft picks."
-          cta="Rookie picks"
-          href="/lm/rookie-picks"
-        />
-        <StaticStep
-          n={6}
-          done={doneDraft}
-          title="Set up the draft"
-          description={
-            doneDraft
-              ? `Draft status: ${status?.draftStatus}.`
-              : 'Configure draft order, slot keeper picks into rounds, start the draft.'
-          }
-          cta="Draft setup"
-          href="/lm/draft-setup"
+        <PopulatePoolStep leagueId={leagueId} n={num()} done={donePool} count={status?.playersPoolCount ?? 0} onRefresh={refresh} />
+        {showAssign && (
+          <StaticStep
+            n={num()}
+            done={doneAssign}
+            title="Assign players to teams"
+            description={
+              doneAssign
+                ? `${status?.playersAssignedCount} player${status?.playersAssignedCount === 1 ? '' : 's'} assigned to teams. Bulk CSV available at /lm/roster-import.`
+                : 'Search players from the pool, pick their team, set their prior keeper round.'
+            }
+            cta="Manage rosters"
+            href="/lm/rosters"
+          />
+        )}
+        {showKeepers && (
+          <StaticStep
+            n={num()}
+            done={doneKeepers}
+            title={
+              setup.entryPhase === 'keeper_season'
+                ? 'Lock keepers, record rookie picks'
+                : 'Lock keepers, set rookie picks'
+            }
+            description={
+              setup.entryPhase === 'keeper_season'
+                ? 'Record the rookie draft results, then lock the keeper phase once owners submit.'
+                : 'Once owners submit, lock the keeper phase. Assign rookie draft picks.'
+            }
+            cta="Rookie picks"
+            href="/lm/rookie-picks"
+          />
+        )}
+        {showDraft && (
+          <StaticStep
+            n={num()}
+            done={doneDraft}
+            title="Set up the draft"
+            description={
+              doneDraft
+                ? `Draft status: ${status?.draftStatus}.`
+                : 'Configure draft order, slot keeper picks into rounds, start the draft.'
+            }
+            cta="Draft setup"
+            href="/lm/draft-setup"
+          />
+        )}
+        <StartSeasonStep
+          leagueId={leagueId}
+          n={num()}
+          done={seasonStarted}
+          onStarted={() => {
+            onSeasonStarted()
+            void refresh()
+          }}
         />
       </div>
       <p className="mt-3 text-xs text-gray-500">
         League ID: <code className="text-gray-400">{leagueId}</code>
       </p>
     </section>
+  )
+}
+
+function ScenarioSelector({
+  league,
+  onSaved,
+}: {
+  league: League
+  onSaved: (s: LeagueSetup) => void
+}) {
+  const { apiFetch } = useApi()
+  const [saving, setSaving] = useState<string | null>(null)
+
+  const choose = async (scenario: (typeof SCENARIOS)[number]) => {
+    setSaving(scenario.label)
+    try {
+      await apiFetch(`/api/leagues/${league.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          config: { ...league.config, setup: scenario.setup },
+        }),
+      })
+      onSaved(scenario.setup)
+      toast.success(`Starting point set: ${scenario.label}`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  return (
+    <section className="mb-10">
+      <h2 className="text-xl font-bold mb-1">Where is this league starting?</h2>
+      <p className="text-sm text-gray-400 mb-4">
+        This decides which setup steps apply. You only pick it once.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {SCENARIOS.map((s) => (
+          <button
+            key={s.label}
+            onClick={() => choose(s)}
+            disabled={saving !== null}
+            className="text-left bg-mns-card border border-gray-800 hover:border-green-400/50 rounded-lg p-4 disabled:opacity-50 transition-colors"
+          >
+            <div className="font-semibold text-white mb-1">
+              {saving === s.label ? 'Saving…' : s.label}
+            </div>
+            <p className="text-sm text-gray-400">{s.description}</p>
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function StartSeasonStep({
+  leagueId,
+  n,
+  done,
+  onStarted,
+}: {
+  leagueId: string
+  n: number
+  done: boolean
+  onStarted: () => void
+}) {
+  const { apiFetch } = useApi()
+  const [running, setRunning] = useState(false)
+
+  const start = async () => {
+    if (!window.confirm('Start the regular season? This moves the league out of setup.')) {
+      return
+    }
+    setRunning(true)
+    try {
+      await apiFetch(`/api/leagues/${leagueId}/start-season`, { method: 'POST' })
+      toast.success('Season started. Welcome to the regular season.')
+      onStarted()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to start season')
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <div className="p-5 flex items-start gap-4">
+      <StepNumber n={n} done={done} />
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold text-white">Start the season</div>
+        <p className="text-sm text-gray-400 mt-1">
+          {done
+            ? 'The regular season is live.'
+            : 'When the steps above are handled, flip the league into the regular season.'}
+        </p>
+      </div>
+      {!done && (
+        <button
+          onClick={start}
+          disabled={running}
+          className="flex-shrink-0 px-3 py-1.5 text-sm bg-pink-500 hover:bg-pink-400 disabled:bg-gray-700 disabled:text-gray-500 text-black font-semibold rounded-lg transition-colors whitespace-nowrap"
+        >
+          {running ? 'Starting…' : 'Start season'}
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -300,4 +499,3 @@ function PopulatePoolStep({
     </div>
   )
 }
-
