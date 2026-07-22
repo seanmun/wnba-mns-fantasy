@@ -40,9 +40,28 @@ export const updateLeagueSchema = z
     // client; tighter nested validation lands when the rule engine
     // grows constraints we care about enforcing server-side.
     config: z.any().optional(),
+    keepersLocked: z.boolean().optional(),
   })
-  .refine((d) => d.name !== undefined || d.config !== undefined, {
-    message: 'Provide at least one of name or config',
+  .refine(
+    (d) =>
+      d.name !== undefined ||
+      d.config !== undefined ||
+      d.keepersLocked !== undefined,
+    {
+      message: 'Provide at least one of name, config, or keepersLocked',
+    }
+  )
+
+export const setRookiePicksSchema = z
+  .object({
+    seasonYear: z.number().int().min(2020).max(2100),
+    rounds: z.number().int().min(1).max(5),
+    // Draft order for round 1; the same order repeats each round
+    // (rookieOrderMethod 'manual' — no snaking).
+    teamOrder: z.array(z.string().trim().min(1)).min(2).max(20),
+  })
+  .refine((d) => new Set(d.teamOrder).size === d.teamOrder.length, {
+    message: 'teamOrder contains duplicate teams',
   })
 
 export const bulkRosterRowSchema = z.object({

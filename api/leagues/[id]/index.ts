@@ -79,6 +79,9 @@ async function handlePatch(
 
   const updates: Record<string, unknown> = { updatedAt: new Date() }
   if (parsed.data.name !== undefined) updates.name = parsed.data.name
+  if (parsed.data.keepersLocked !== undefined) {
+    updates.keepersLocked = parsed.data.keepersLocked
+  }
   if (parsed.data.config !== undefined) {
     const config = parsed.data.config as LeagueConfig
     updates.config = config

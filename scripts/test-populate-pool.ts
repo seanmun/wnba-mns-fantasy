@@ -85,7 +85,7 @@ async function main() {
     console.log(`  $${p.salary.toLocaleString().padStart(10)} ${p.name.padEnd(28)} ${p.team} ${p.position || '—'}`)
   })
 
-  console.log('\nUpserting to mns_players…')
+  console.log('\nUpserting to wnba.players…')
   let inserted = 0
   let updated = 0
   for (const p of result.players) {

@@ -1,5 +1,6 @@
 import {
   pgTable,
+  pgSchema,
   text,
   integer,
   bigint,
@@ -38,6 +39,10 @@ import type {
 // SHARED TABLES (cross-game on the same Neon DB)
 // ============================================================================
 
+// All WNBA game tables live in the `wnba` Postgres schema. Shared
+// cross-game tables (users, marketing_*) stay in `public`.
+export const wnbaSchema = pgSchema('wnba')
+
 // Matches the live shared `users` table created by ncaa-mns-fantasy.
 // NOT-marking email .unique() here because the live table doesn't have
 // that constraint (NCAA's TS schema declares it but never migrated).
@@ -60,8 +65,8 @@ export const users = pgTable('users', {
 // they're enough to identify a league across the multi-tenant Neon DB.
 // `gameSlug` matches the NCAA convention ('mns-wnba-2026', 'mns-nba-2027')
 // for filtering in shared tables like marketing_game_prefs / email_log.
-export const mnsLeagues = pgTable(
-  'mns_leagues',
+export const mnsLeagues = wnbaSchema.table(
+  'leagues',
   {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
@@ -92,8 +97,8 @@ export const mnsLeagues = pgTable(
   ]
 )
 
-export const mnsTeams = pgTable(
-  'mns_teams',
+export const mnsTeams = wnbaSchema.table(
+  'teams',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
@@ -113,8 +118,8 @@ export const mnsTeams = pgTable(
   (t) => [index('idx_mns_teams_league').on(t.leagueId)]
 )
 
-export const mnsTeamOwners = pgTable(
-  'mns_team_owners',
+export const mnsTeamOwners = wnbaSchema.table(
+  'team_owners',
   {
     teamId: text('team_id')
       .notNull()
@@ -136,8 +141,8 @@ export const mnsTeamOwners = pgTable(
 // PLAYERS
 // ============================================================================
 
-export const mnsPlayers = pgTable(
-  'mns_players',
+export const mnsPlayers = wnbaSchema.table(
+  'players',
   {
     id: text('id').primaryKey(),
     // Platform-specific identifiers (fantrax, hhs, wnba, yahoo, espn, ...).
@@ -184,8 +189,8 @@ export const mnsPlayers = pgTable(
 // ROSTERS — keeper decisions
 // ============================================================================
 
-export const mnsRosters = pgTable(
-  'mns_rosters',
+export const mnsRosters = wnbaSchema.table(
+  'rosters',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
@@ -221,8 +226,8 @@ export const mnsRosters = pgTable(
 // REGULAR-SEASON ROSTERS — active/IR/redshirt slot management
 // ============================================================================
 
-export const mnsRegularSeasonRosters = pgTable(
-  'mns_regular_season_rosters',
+export const mnsRegularSeasonRosters = wnbaSchema.table(
+  'regular_season_rosters',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
@@ -251,8 +256,8 @@ export const mnsRegularSeasonRosters = pgTable(
 // DAILY LINEUPS
 // ============================================================================
 
-export const mnsDailyLineups = pgTable(
-  'mns_daily_lineups',
+export const mnsDailyLineups = wnbaSchema.table(
+  'daily_lineups',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
@@ -275,8 +280,8 @@ export const mnsDailyLineups = pgTable(
 // DRAFT
 // ============================================================================
 
-export const mnsDrafts = pgTable(
-  'mns_drafts',
+export const mnsDrafts = wnbaSchema.table(
+  'drafts',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
@@ -300,8 +305,8 @@ export const mnsDrafts = pgTable(
   (t) => [index('idx_mns_drafts_league_season').on(t.leagueId, t.seasonYear)]
 )
 
-export const mnsPickAssignments = pgTable(
-  'mns_pick_assignments',
+export const mnsPickAssignments = wnbaSchema.table(
+  'pick_assignments',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
@@ -339,8 +344,8 @@ export const mnsPickAssignments = pgTable(
   ]
 )
 
-export const mnsRookieDraftPicks = pgTable(
-  'mns_rookie_draft_picks',
+export const mnsRookieDraftPicks = wnbaSchema.table(
+  'rookie_draft_picks',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
@@ -364,8 +369,8 @@ export const mnsRookieDraftPicks = pgTable(
   ]
 )
 
-export const mnsDraftHistory = pgTable(
-  'mns_draft_history',
+export const mnsDraftHistory = wnbaSchema.table(
+  'draft_history',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
@@ -387,8 +392,8 @@ export const mnsDraftHistory = pgTable(
 // SCHEDULE — games, league_weeks, matchups
 // ============================================================================
 
-export const mnsGames = pgTable(
-  'mns_games',
+export const mnsGames = wnbaSchema.table(
+  'games',
   {
     id: text('id').primaryKey(),
     seasonYear: integer('season_year').notNull(),
@@ -402,8 +407,8 @@ export const mnsGames = pgTable(
   (t) => [index('idx_mns_games_date').on(t.gameDate, t.seasonYear)]
 )
 
-export const mnsLeagueWeeks = pgTable(
-  'mns_league_weeks',
+export const mnsLeagueWeeks = wnbaSchema.table(
+  'league_weeks',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
@@ -420,8 +425,8 @@ export const mnsLeagueWeeks = pgTable(
   (t) => [index('idx_mns_league_weeks_league_season').on(t.leagueId, t.seasonYear)]
 )
 
-export const mnsMatchups = pgTable(
-  'mns_matchups',
+export const mnsMatchups = wnbaSchema.table(
+  'matchups',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
@@ -447,8 +452,8 @@ export const mnsMatchups = pgTable(
 // FEES
 // ============================================================================
 
-export const mnsKeeperFees = pgTable(
-  'mns_keeper_fees',
+export const mnsKeeperFees = wnbaSchema.table(
+  'keeper_fees',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
@@ -470,8 +475,8 @@ export const mnsKeeperFees = pgTable(
   (t) => [index('idx_mns_keeper_fees_league').on(t.leagueId)]
 )
 
-export const mnsTeamFees = pgTable(
-  'mns_team_fees',
+export const mnsTeamFees = wnbaSchema.table(
+  'team_fees',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
@@ -503,8 +508,8 @@ export const mnsTeamFees = pgTable(
 // TRADES
 // ============================================================================
 
-export const mnsTradeProposals = pgTable(
-  'mns_trade_proposals',
+export const mnsTradeProposals = wnbaSchema.table(
+  'trade_proposals',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
@@ -533,8 +538,8 @@ export const mnsTradeProposals = pgTable(
   ]
 )
 
-export const mnsTradeProposalResponses = pgTable(
-  'mns_trade_proposal_responses',
+export const mnsTradeProposalResponses = wnbaSchema.table(
+  'trade_proposal_responses',
   {
     id: text('id').primaryKey(),
     proposalId: text('proposal_id')
@@ -559,8 +564,8 @@ export const mnsTradeProposalResponses = pgTable(
 // WAGERS
 // ============================================================================
 
-export const mnsWagers = pgTable(
-  'mns_wagers',
+export const mnsWagers = wnbaSchema.table(
+  'wagers',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     leagueId: text('league_id')
@@ -597,8 +602,8 @@ export const mnsWagers = pgTable(
 // WATCHLISTS
 // ============================================================================
 
-export const mnsWatchlists = pgTable(
-  'mns_watchlists',
+export const mnsWatchlists = wnbaSchema.table(
+  'watchlists',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     leagueId: text('league_id')
@@ -622,8 +627,8 @@ export const mnsWatchlists = pgTable(
 // player per season; PK includes season_year to support multi-season
 // projections cohabiting if we ever need them. seasonYear default
 // kept for backwards-compat with the WNBA scraper output.
-export const mnsProjectedStats = pgTable(
-  'mns_projected_stats',
+export const mnsProjectedStats = wnbaSchema.table(
+  'projected_stats',
   {
     playerId: text('player_id')
       .notNull()
@@ -653,8 +658,8 @@ export const mnsProjectedStats = pgTable(
   (t) => [primaryKey({ columns: [t.playerId, t.seasonYear] })]
 )
 
-export const mnsPreviousStats = pgTable(
-  'mns_previous_stats',
+export const mnsPreviousStats = wnbaSchema.table(
+  'previous_stats',
   {
     playerId: text('player_id')
       .notNull()
@@ -682,8 +687,8 @@ export const mnsPreviousStats = pgTable(
 // PROSPECTS
 // ============================================================================
 
-export const mnsProspects = pgTable(
-  'mns_prospects',
+export const mnsProspects = wnbaSchema.table(
+  'prospects',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     rank: integer('rank').notNull(),
@@ -714,8 +719,8 @@ export const mnsProspects = pgTable(
 // PORTFOLIO — prize pool wallet tracking
 // ============================================================================
 
-export const mnsPortfolios = pgTable(
-  'mns_portfolios',
+export const mnsPortfolios = wnbaSchema.table(
+  'portfolios',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
@@ -737,8 +742,8 @@ export const mnsPortfolios = pgTable(
 // PLAYOFFS
 // ============================================================================
 
-export const mnsPlayoffBrackets = pgTable(
-  'mns_playoff_brackets',
+export const mnsPlayoffBrackets = wnbaSchema.table(
+  'playoff_brackets',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
@@ -753,8 +758,8 @@ export const mnsPlayoffBrackets = pgTable(
   (t) => [index('idx_mns_playoff_brackets_league').on(t.leagueId)]
 )
 
-export const mnsPrizePayouts = pgTable(
-  'mns_prize_payouts',
+export const mnsPrizePayouts = wnbaSchema.table(
+  'prize_payouts',
   {
     id: text('id').primaryKey(),
     leagueId: text('league_id')
@@ -773,8 +778,8 @@ export const mnsPrizePayouts = pgTable(
 // AUDIT — importer log + phase transitions
 // ============================================================================
 
-export const mnsLeagueImports = pgTable(
-  'mns_league_imports',
+export const mnsLeagueImports = wnbaSchema.table(
+  'league_imports',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     leagueId: text('league_id')
@@ -789,8 +794,8 @@ export const mnsLeagueImports = pgTable(
   (t) => [index('idx_mns_league_imports_league').on(t.leagueId)]
 )
 
-export const mnsPhaseTransitions = pgTable(
-  'mns_phase_transitions',
+export const mnsPhaseTransitions = wnbaSchema.table(
+  'phase_transitions',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     leagueId: text('league_id')

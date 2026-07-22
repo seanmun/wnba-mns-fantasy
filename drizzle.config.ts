@@ -13,12 +13,13 @@ export default {
   dbCredentials: {
     url: process.env.DATABASE_URL!,
   },
-  // Limit introspection strictly to tables we own. The `users` table is
-  // shared cross-game (NCAA/golf) but we extend it with a `role` column;
-  // diff will be additive only. Do NOT add other shared tables here unless
-  // we also define them in schema.ts — drizzle would otherwise want to DROP
-  // anything in DB but not in our schema.
-  tablesFilter: ['mns_*', 'users'],
+  // All WNBA game tables live in the `wnba` Postgres schema. Shared
+  // cross-game tables (users, marketing_*) live in `public` and are NOT
+  // managed by this app's push — users is defined in schema.ts for
+  // runtime queries only. Never add 'public' here: with our generic
+  // table names (leagues, players, ...) drizzle would match other games'
+  // public tables and try to DROP them.
+  schemaFilter: ['wnba'],
   verbose: true,
   strict: true,
 } satisfies Config
