@@ -1,11 +1,46 @@
 @import "tailwindcss";
+/* Runtime palette + component styles from mns-ui (synced src/ui/).
+   tokens.css carries BOTH themes — Chalk light on bare :root, dark via
+   prefers-color-scheme and [data-theme] stamps — and, being unlayered,
+   it overrides the @theme block's values at runtime. */
+@import "./ui/tokens.css";
+@import "./ui/mns-ui.css";
+
+/* Platform tokens so Tailwind utilities exist, plus this app's own
+   mns-* names. Before this block existed, bg-mns-card / bg-mns-dark /
+   bg-mns-hover (79 usages) were defined NOWHERE — the classes silently
+   generated nothing and every "card" was transparent on the black
+   body. Now they are real and themed. */
+@theme {
+  --color-background: #0a0a0f;
+  --color-foreground: #f5f5f7;
+  --color-card: #141419;
+  --color-card-foreground: #f5f5f7;
+  --color-border: #2a2a35;
+  --color-muted: #1c1c24;
+  --color-muted-foreground: #8e8e9a;
+  --color-accent: #00ff87;
+  --color-accent-foreground: #0a0a0f;
+
+  --color-mns-dark: #0a0a0f;
+  --color-mns-card: #141419;
+  --color-mns-hover: #1c1c24;
+}
+
+/* The mns-* names ride the platform tokens at runtime, so both themes
+   flow through every existing class. */
+:root {
+  --color-mns-dark: var(--color-background);
+  --color-mns-card: var(--color-card);
+  --color-mns-hover: var(--color-muted);
+}
 
 html,
 body,
 #root {
   height: 100%;
-  background-color: #0a0a0a;
-  color: white;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
 }
 
 body {

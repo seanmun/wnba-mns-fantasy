@@ -113,7 +113,122 @@ export function LeagueHome() {
         />
       )}
 
-      {/* Teams placeholder */}
+      {/* This week's matchups — the season's front door */}
+      {leaguePhase === 'regular_season' || leaguePhase === 'playoffs' ? (
+        <WeekMatchups leagueId={league.id} />
+      ) : null}
+
+      {/* Teams */}
+      <TeamsSection leagueId={league.id} isCommissioner={isCommissioner} myUserId={user?.id ?? null} />
+    </div>
+  )
+}
+
+interface WeekMatchup {
+  id: string
+  status: string
+  homeTeamName: string
+  awayTeamName: string
+  homeScore: number
+  awayScore: number
+}
+
+function WeekMatchups({ leagueId }: { leagueId: string }) {
+  const { apiFetch } = useApi()
+  const [data, setData] = useState<{ week: number | null; matchups: WeekMatchup[] } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    apiFetch<{ week: number | null; matchups: WeekMatchup[] }>(`/api/leagues/${leagueId}/matchups`)
+      .then((d) => {
+        if (!cancelled) setData(d)
+      })
+      .catch(() => {
+        if (!cancelled) setData({ week: null, matchups: [] })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [apiFetch, leagueId])
+
+  if (!data || data.matchups.length === 0) return null
+
+  return (
+    <section className="mb-8">
+      <div className="flex items-baseline justify-between mb-4">
+        <h2 className="text-xl font-bold">Week {data.week} matchups</h2>
+        <Link to={`/league/${leagueId}/standings`} className="text-sm text-green-400 hover:text-green-300">
+          Standings →
+        </Link>
+      </div>
+      <ul className="grid gap-2 sm:grid-cols-2">
+        {data.matchups.map((m) => (
+          <li key={m.id}>
+            <Link
+              to={`/league/${leagueId}/matchup/${m.id}`}
+              className="block bg-mns-card hover:bg-mns-hover border border-gray-800 rounded-lg px-4 py-3 transition-colors"
+            >
+              <span className="flex items-center justify-between tabular-nums">
+                <span className="font-semibold truncate">{m.awayTeamName}</span>
+                <b className="shrink-0 px-2">{m.awayScore}</b>
+              </span>
+              <span className="flex items-center justify-between tabular-nums">
+                <span className="font-semibold truncate">{m.homeTeamName}</span>
+                <b className="shrink-0 px-2">{m.homeScore}</b>
+              </span>
+              <span className="block mt-1 text-[0.68rem] font-bold uppercase tracking-wider text-[var(--color-muted-foreground)]">
+                {m.status === 'final' ? 'Final' : m.status === 'live' ? 'Live — category score' : 'Scheduled'}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+interface HomeTeamOwner {
+  id: string
+  userId: string | null
+  email: string
+  displayName: string | null
+}
+interface HomeTeam {
+  id: string
+  name: string
+  owners: HomeTeamOwner[]
+}
+
+function TeamsSection({
+  leagueId,
+  isCommissioner,
+  myUserId,
+}: {
+  leagueId: string
+  isCommissioner: boolean
+  myUserId: string | null
+}) {
+  const { apiFetch } = useApi()
+  const [teams, setTeams] = useState<HomeTeam[] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    apiFetch<HomeTeam[]>(`/api/leagues/${leagueId}/teams`)
+      .then((t) => {
+        if (!cancelled) setTeams(t)
+      })
+      .catch(() => {
+        if (!cancelled) setTeams([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [apiFetch, leagueId])
+
+  if (teams == null) return null
+
+  if (teams.length === 0) {
+    return (
       <section className="mb-8">
         <h2 className="text-xl font-bold mb-4">Teams</h2>
         <div className="bg-mns-card border border-gray-800 rounded-lg p-8 text-center text-gray-400">
@@ -126,7 +241,45 @@ export function LeagueHome() {
           </p>
         </div>
       </section>
-    </div>
+    )
+  }
+
+  return (
+    <section className="mb-8">
+      <h2 className="text-xl font-bold mb-4">Teams</h2>
+      <ul className="grid gap-2 sm:grid-cols-2">
+        {teams.map((t) => {
+          const mine = t.owners.some((o) => o.userId != null && o.userId === myUserId)
+          return (
+            <li key={t.id}>
+              <Link
+                to={`/league/${leagueId}/team/${t.id}`}
+                className={
+                  'block bg-mns-card hover:bg-mns-hover border rounded-lg px-4 py-3 transition-colors ' +
+                  (mine ? 'border-[var(--color-accent)]' : 'border-gray-800')
+                }
+              >
+                <span className="font-semibold text-[var(--color-foreground)]">
+                  {t.name}
+                  {mine ? (
+                    <span className="ml-2 text-[0.68rem] font-bold uppercase tracking-wider text-[var(--color-accent)]">
+                      you
+                    </span>
+                  ) : null}
+                </span>
+                <span className="block text-sm text-[var(--color-muted-foreground)] truncate">
+                  {t.owners.length
+                    ? t.owners
+                        .map((o) => o.displayName ?? `${o.email.split('@')[0]} (invited)`)
+                        .join(' · ')
+                    : 'No owner yet'}
+                </span>
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
   )
 }
 
@@ -186,7 +339,7 @@ function CommissionerChecklist({
     <section className="mb-10">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold">Commissioner Setup</h2>
-        <Link to="/lm" className="text-sm text-green-400 hover:text-green-300">
+        <Link to={`/league/${leagueId}/lm`} className="text-sm text-green-400 hover:text-green-300">
           Open LM hub →
         </Link>
       </div>
@@ -201,7 +354,7 @@ function CommissionerChecklist({
               : 'Create 4-12 teams and invite owners by email.'
           }
           cta={doneTeams ? 'Manage teams' : 'Add teams'}
-          href="/lm/teams"
+          href={`/league/${leagueId}/lm/teams`}
         />
         <StaticStep
           n={num()}
@@ -209,7 +362,7 @@ function CommissionerChecklist({
           title="Configure league rules"
           description="Override cap, fees, schedule, scoring — anything from the WNBA preset."
           cta="League settings"
-          href="/lm/league"
+          href={`/league/${leagueId}/lm/league`}
         />
         <PopulatePoolStep leagueId={leagueId} n={num()} done={donePool} count={status?.playersPoolCount ?? 0} onRefresh={refresh} />
         {showAssign && (
@@ -219,11 +372,11 @@ function CommissionerChecklist({
             title="Assign players to teams"
             description={
               doneAssign
-                ? `${status?.playersAssignedCount} player${status?.playersAssignedCount === 1 ? '' : 's'} assigned to teams. Bulk CSV available at /lm/roster-import.`
+                ? `${status?.playersAssignedCount} player${status?.playersAssignedCount === 1 ? '' : 's'} assigned to teams. Bulk CSV available from the roster manager.`
                 : 'Search players from the pool, pick their team, set their prior keeper round.'
             }
             cta="Manage rosters"
-            href="/lm/rosters"
+            href={`/league/${leagueId}/lm/rosters`}
           />
         )}
         {showKeepers && (
@@ -241,7 +394,7 @@ function CommissionerChecklist({
                 : 'Once owners submit, lock the keeper phase. Assign rookie draft picks.'
             }
             cta="Rookie picks"
-            href="/lm/rookie-picks"
+            href={`/league/${leagueId}/lm/rookie-picks`}
           />
         )}
         {showDraft && (
@@ -255,7 +408,7 @@ function CommissionerChecklist({
                 : 'Configure draft order, slot keeper picks into rounds, start the draft.'
             }
             cta="Draft setup"
-            href="/lm/draft-setup"
+            href={`/league/${leagueId}/lm/draft-setup`}
           />
         )}
         <StartSeasonStep

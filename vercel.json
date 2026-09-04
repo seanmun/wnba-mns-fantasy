@@ -1,12 +1,24 @@
 {
   "functions": {
     "api/**/*.ts": {
-      "includeFiles": "src/lib/**/*.ts,src/rules/**/*.ts,src/types/**/*.ts,api/_*.ts,email-templates/*.html",
+      "includeFiles": "src/lib/**/*.ts,src/rules/**/*.ts,src/types/**/*.ts,api/_*.ts",
       "maxDuration": 30
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/((?!api).*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/((?!api).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/season-tick",
+      "schedule": "0 * * * *"
+    }
   ]
 }

@@ -1,5 +1,5 @@
-import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { lazy, Suspense, useEffect } from 'react'
+import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { ScrollToTop } from './components/ScrollToTop'
 import { UserSync } from './components/UserSync'
@@ -9,7 +9,7 @@ import { Footer } from './components/Footer'
 import { LeagueTopNav } from './components/LeagueTopNav'
 import { LeagueBottomNav } from './components/LeagueBottomNav'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { LeagueProvider } from './contexts/LeagueContext'
+import { LeagueProvider, useLeague } from './contexts/LeagueContext'
 
 // Eager — needed for initial render
 import { Home } from './pages/Home'
@@ -44,6 +44,7 @@ const Inbox = lazy(() => import('./pages/Inbox').then((m) => ({ default: m.Inbox
 const MatchupDetail = lazy(() => import('./pages/MatchupDetail').then((m) => ({ default: m.MatchupDetail })))
 const Rules = lazy(() => import('./pages/Rules').then((m) => ({ default: m.Rules })))
 const RecordBook = lazy(() => import('./pages/RecordBook').then((m) => ({ default: m.RecordBook })))
+const Standings = lazy(() => import('./pages/Standings').then((m) => ({ default: m.Standings })))
 
 // League manager
 const LeagueManagerHub = lazy(() => import('./pages/LeagueManagerHub').then((m) => ({ default: m.LeagueManagerHub })))
@@ -94,11 +95,22 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 }
 
 function LeagueLayout({ children }: { children: React.ReactNode }) {
+  // The URL is the single source of which league we're in. Syncing it
+  // into LeagueContext here kills the localStorage drift where a
+  // multi-league commissioner could land on /lm pages and silently edit
+  // whichever league was persisted last.
+  const { leagueId } = useParams()
+  const { currentLeagueId, setCurrentLeagueId } = useLeague()
+  useEffect(() => {
+    if (leagueId && leagueId !== currentLeagueId) setCurrentLeagueId(leagueId)
+  }, [leagueId, currentLeagueId, setCurrentLeagueId])
+
   return (
     <div className="flex flex-col min-h-screen">
       <Header />
       <LeagueTopNav />
-      <main className="flex-1 pb-16 lg:pb-0">
+      {/* pb clears the always-visible bottom tab bar */}
+      <main className="flex-1 pb-16">
         <ErrorBoundary>{children}</ErrorBoundary>
       </main>
       <Footer />
@@ -113,9 +125,12 @@ export function App() {
       <ScrollToTop />
       <Toaster
         position="bottom-right"
-        theme="dark"
         toastOptions={{
-          style: { background: '#121212', border: '1px solid #374151', color: '#fff' },
+          style: {
+            background: 'var(--color-card)',
+            border: '1px solid var(--color-border)',
+            color: 'var(--color-foreground)',
+          },
           className: 'text-sm',
         }}
       />
@@ -144,6 +159,8 @@ export function App() {
             <Route path="/league/:leagueId" element={<ProtectedRoute><LeagueLayout><LeagueHome /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/matchup/:matchupId" element={<ProtectedRoute><LeagueLayout><MatchupDetail /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/team/:teamId" element={<ProtectedRoute><LeagueLayout><OwnerDashboard /></LeagueLayout></ProtectedRoute>} />
+            <Route path="/league/:leagueId/my-team" element={<ProtectedRoute><LeagueLayout><OwnerDashboard /></LeagueLayout></ProtectedRoute>} />
+            <Route path="/league/:leagueId/standings" element={<ProtectedRoute><LeagueLayout><Standings /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/draft" element={<ProtectedRoute><LeagueLayout><Draft /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/free-agents" element={<ProtectedRoute><LeagueLayout><FreeAgents /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/record-book" element={<ProtectedRoute><LeagueLayout><RecordBook /></LeagueLayout></ProtectedRoute>} />
@@ -155,18 +172,20 @@ export function App() {
             <Route path="/league/:leagueId/trade-machine" element={<ProtectedRoute><LeagueLayout><TradeMachine /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/inbox" element={<ProtectedRoute><LeagueLayout><Inbox /></LeagueLayout></ProtectedRoute>} />
 
-            {/* League manager */}
-            <Route path="/lm" element={<ProtectedRoute><AppLayout><LeagueManagerHub /></AppLayout></ProtectedRoute>} />
-            <Route path="/lm/league" element={<ProtectedRoute><AppLayout><AdminLeague /></AppLayout></ProtectedRoute>} />
-            <Route path="/lm/teams" element={<ProtectedRoute><AppLayout><AdminTeams /></AppLayout></ProtectedRoute>} />
-            <Route path="/lm/rosters" element={<ProtectedRoute><AppLayout><AdminRosterManager /></AppLayout></ProtectedRoute>} />
-            <Route path="/lm/roster-import" element={<ProtectedRoute><AppLayout><AdminRosterImport /></AppLayout></ProtectedRoute>} />
-            <Route path="/lm/draft-setup" element={<ProtectedRoute><AppLayout><AdminDraftSetup /></AppLayout></ProtectedRoute>} />
-            <Route path="/lm/draft-test" element={<ProtectedRoute><AppLayout><AdminDraftTest /></AppLayout></ProtectedRoute>} />
-            <Route path="/lm/draft-picks" element={<ProtectedRoute><AppLayout><AdminDraftPicks /></AppLayout></ProtectedRoute>} />
-            <Route path="/lm/rookie-picks" element={<ProtectedRoute><AppLayout><AdminRookiePicks /></AppLayout></ProtectedRoute>} />
-            <Route path="/lm/trade" element={<ProtectedRoute><AppLayout><AdminTradeManager /></AppLayout></ProtectedRoute>} />
-            <Route path="/lm/portfolio" element={<ProtectedRoute><AppLayout><AdminPortfolio /></AppLayout></ProtectedRoute>} />
+            {/* League manager — inside the league URL, so the league
+                being managed is ALWAYS the one on screen, never
+                whatever localStorage remembered. */}
+            <Route path="/league/:leagueId/lm" element={<ProtectedRoute><LeagueLayout><LeagueManagerHub /></LeagueLayout></ProtectedRoute>} />
+            <Route path="/league/:leagueId/lm/league" element={<ProtectedRoute><LeagueLayout><AdminLeague /></LeagueLayout></ProtectedRoute>} />
+            <Route path="/league/:leagueId/lm/teams" element={<ProtectedRoute><LeagueLayout><AdminTeams /></LeagueLayout></ProtectedRoute>} />
+            <Route path="/league/:leagueId/lm/rosters" element={<ProtectedRoute><LeagueLayout><AdminRosterManager /></LeagueLayout></ProtectedRoute>} />
+            <Route path="/league/:leagueId/lm/roster-import" element={<ProtectedRoute><LeagueLayout><AdminRosterImport /></LeagueLayout></ProtectedRoute>} />
+            <Route path="/league/:leagueId/lm/draft-setup" element={<ProtectedRoute><LeagueLayout><AdminDraftSetup /></LeagueLayout></ProtectedRoute>} />
+            <Route path="/league/:leagueId/lm/draft-test" element={<ProtectedRoute><LeagueLayout><AdminDraftTest /></LeagueLayout></ProtectedRoute>} />
+            <Route path="/league/:leagueId/lm/draft-picks" element={<ProtectedRoute><LeagueLayout><AdminDraftPicks /></LeagueLayout></ProtectedRoute>} />
+            <Route path="/league/:leagueId/lm/rookie-picks" element={<ProtectedRoute><LeagueLayout><AdminRookiePicks /></LeagueLayout></ProtectedRoute>} />
+            <Route path="/league/:leagueId/lm/trade" element={<ProtectedRoute><LeagueLayout><AdminTradeManager /></LeagueLayout></ProtectedRoute>} />
+            <Route path="/league/:leagueId/lm/portfolio" element={<ProtectedRoute><LeagueLayout><AdminPortfolio /></LeagueLayout></ProtectedRoute>} />
 
             {/* Site admin */}
             <Route path="/site-admin" element={<ProtectedRoute><AppLayout><AdminHub /></AppLayout></ProtectedRoute>} />

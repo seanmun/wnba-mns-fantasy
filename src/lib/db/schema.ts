@@ -11,6 +11,7 @@ import {
   numeric,
   primaryKey,
   index,
+  unique,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
@@ -442,9 +443,52 @@ export const mnsMatchups = wnbaSchema.table(
       .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     homeScore: numeric('home_score'),
     awayScore: numeric('away_score'),
+    // scheduled → live (week underway) → final (week over, records
+    // counted). Written by the scoring pass, read by standings.
+    status: text('status').notNull().default('scheduled'),
+    // Category-by-category detail from computeMatchupResult, so the
+    // matchup page can show WHY someone is up 6-3 without recomputing.
+    result: jsonb('result').$type<Record<string, unknown> | null>(),
   },
   (t) => [
     index('idx_mns_matchups_league_week').on(t.leagueId, t.matchupWeek),
+  ]
+)
+
+// One player's real (or simulated) box line for one day. Raw components
+// only — ratio categories (FG%, A/TO) are computed at aggregation time,
+// never stored. Upserts key on (league, player, date) so re-ingesting a
+// corrected ESPN box is idempotent.
+export const mnsPlayerStatLines = wnbaSchema.table(
+  'player_stat_lines',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    leagueId: text('league_id')
+      .notNull()
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
+    playerId: text('player_id')
+      .notNull()
+      .references(() => mnsPlayers.id, { onDelete: 'cascade' }),
+    // Eastern-calendar date of the game, YYYY-MM-DD.
+    date: text('date').notNull(),
+    source: text('source').notNull(), // 'espn' | 'sim'
+    min: integer('min').notNull().default(0),
+    pts: integer('pts').notNull().default(0),
+    fgm: integer('fgm').notNull().default(0),
+    fga: integer('fga').notNull().default(0),
+    ftm: integer('ftm').notNull().default(0),
+    fta: integer('fta').notNull().default(0),
+    tpm: integer('tpm').notNull().default(0),
+    reb: integer('reb').notNull().default(0),
+    ast: integer('ast').notNull().default(0),
+    stl: integer('stl').notNull().default(0),
+    blk: integer('blk').notNull().default(0),
+    tov: integer('tov').notNull().default(0),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    unique('mns_stat_lines_player_date_key').on(t.leagueId, t.playerId, t.date),
+    index('idx_mns_stat_lines_league_date').on(t.leagueId, t.date),
   ]
 )
 

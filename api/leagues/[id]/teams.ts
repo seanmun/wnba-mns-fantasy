@@ -3,10 +3,13 @@ import { eq, sql } from 'drizzle-orm'
 import { verifyAuth, canManageLeague } from '../../_middleware.js'
 import { db } from '../../_db.js'
 import {
+  mnsLeagues,
   mnsTeams,
   mnsTeamOwners,
   users,
 } from '../../../src/lib/db/schema.js'
+import { esc, sendAll } from '../../_email.js'
+import { emailNote, emailShell } from '../../_emailTemplate.js'
 import { createTeamSchema, parseBody } from '../../_validation.js'
 import { logger } from '../../_logger.js'
 import type { Team, TeamOwner } from '../../../src/types/team.js'
@@ -160,6 +163,54 @@ async function handlePost(
 
     await db.insert(mnsTeamOwners).values(ownerInserts)
 
+    // The invite the UI has always promised. Best-effort — a mail
+    // hiccup must never fail team creation; failures are logged and
+    // reported in the response so the commissioner can chase them.
+    let invitesSent = 0
+    let invitesFailed = 0
+    try {
+      const [league] = await db
+        .select({ name: mnsLeagues.name })
+        .from(mnsLeagues)
+        .where(eq(mnsLeagues.id, leagueId))
+        .limit(1)
+      const appUrl = process.env.VITE_APP_URL || 'https://wnba.mnsfantasy.com'
+      const sent = await sendAll(
+        ownerEmails.map((email) => ({
+          to: email,
+          subject: `You're in: ${name} — ${league?.name ?? 'MNS WNBA'}`,
+          html: emailShell({
+            preheader: `You've been given ${name} in ${league?.name ?? 'a WNBA dynasty league'}.`,
+            heading: `You own ${esc(name)}`,
+            subheading: esc(league?.name ?? 'MNS WNBA dynasty'),
+            bodyHtml: emailNote(
+              `The commissioner handed you the keys. Sign in — or create an account — with <b style="color:#f0f4f8">this email address</b> (${esc(email)}) and the team links to you automatically.`
+            ),
+            ctaLabel: 'Claim my team',
+            ctaUrl: `${appUrl}/sign-up`,
+            footerLine: `Sent because the commissioner of ${esc(league?.name ?? 'an MNS league')} added this address on wnba.mnsfantasy.com.`,
+          }),
+          text: [
+            `You own ${name} in ${league?.name ?? 'an MNS WNBA dynasty league'}.`,
+            '',
+            `Sign in or create an account with this email address (${email}) and the team links to you automatically.`,
+            `${appUrl}/sign-up`,
+          ].join('\n'),
+        }))
+      )
+      invitesSent = sent.sent
+      invitesFailed = sent.failed.length
+      if (sent.failed.length) {
+        logger.error('owner invite emails failed', { teamId, failed: sent.failed })
+      }
+    } catch (err) {
+      invitesFailed = ownerEmails.length
+      logger.error('owner invite email error', {
+        teamId,
+        err: err instanceof Error ? err.message : String(err),
+      })
+    }
+
     const ownerRows = await db
       .select()
       .from(mnsTeamOwners)
@@ -169,7 +220,7 @@ async function handlePost(
       ...mapTeamRow(teamRow),
       owners: ownerRows.map(mapOwnerRow),
     }
-    return res.status(201).json(result)
+    return res.status(201).json({ ...result, invitesSent, invitesFailed })
   } catch (err) {
     logger.error('POST /api/leagues/[id]/teams failed', {
       leagueId,

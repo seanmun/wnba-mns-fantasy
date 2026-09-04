@@ -312,7 +312,7 @@ export function AdminRosterImport() {
               Import another
             </button>
             <Link
-              to="/lm/rosters"
+              to="../rosters"
               className="px-4 py-2 bg-green-500 hover:bg-green-400 text-black font-bold rounded transition-colors"
             >
               Open Roster Manager →

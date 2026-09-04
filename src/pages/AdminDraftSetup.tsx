@@ -1,8 +1,127 @@
+import { useEffect, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { toast } from 'sonner'
+import { useApi } from '../hooks/useApi'
+import { useLeague } from '../contexts/LeagueContext'
+
+interface TeamRow {
+  id: string
+  name: string
+  owners: Array<{ userId: string | null; email: string; displayName: string | null }>
+}
+
+// Draft setup, commissioner-side: readiness first (a team with no
+// signed-up owner cannot pick), then one Create button. Live controls —
+// start, pause, restart — live in the draft room where the board is.
 export function AdminDraftSetup() {
+  const { leagueId = '' } = useParams()
+  const { apiFetch } = useApi()
+  const { currentLeague } = useLeague()
+  const [teams, setTeams] = useState<TeamRow[] | null>(null)
+  const [draftRef, setDraftRef] = useState<{ draftId: string | null; status: string | null } | null>(null)
+  const [poolCount, setPoolCount] = useState<number | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const refresh = () => {
+    void apiFetch<TeamRow[]>(`/api/leagues/${leagueId}/teams`).then(setTeams).catch(() => setTeams([]))
+    void apiFetch<{ draftId: string | null; status: string | null }>(`/api/leagues/${leagueId}/draft`)
+      .then(setDraftRef)
+      .catch(() => setDraftRef({ draftId: null, status: null }))
+    void apiFetch<Array<{ teamId: string | null }>>(`/api/leagues/${leagueId}/players`)
+      .then((p) => setPoolCount(p.filter((x) => x.teamId == null).length))
+      .catch(() => setPoolCount(null))
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(refresh, [leagueId])
+
+  const create = async () => {
+    setBusy(true)
+    try {
+      await apiFetch(`/api/leagues/${leagueId}/draft`, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'create' }),
+      })
+      toast.success('Draft created')
+      refresh()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (teams == null || draftRef == null) {
+    return (
+      <div className="flex items-center justify-center min-h-[40vh]">
+        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-green-500 border-r-transparent" />
+      </div>
+    )
+  }
+
+  const unlinked = teams.filter((t) => !t.owners.some((o) => o.userId != null))
+  const rounds = currentLeague?.config.draft?.rounds ?? currentLeague?.config.roster?.activeSize
+
   return (
-    <div className="p-6 text-gray-400">
-      <h1 className="text-xl text-white mb-2">AdminDraftSetup</h1>
-      <p>TODO: implement</p>
+    <div className="max-w-2xl mx-auto px-4 py-8 pb-24">
+      <Link to={`/league/${leagueId}/lm`} className="text-xs text-[var(--color-muted-foreground)]">
+        ← LM hub
+      </Link>
+      <h1 className="text-3xl font-bold mt-1 mb-6">Draft setup</h1>
+
+      <div className="bg-mns-card border border-[var(--color-border)] rounded-lg divide-y divide-[var(--color-border)] mb-6">
+        <div className="p-4 flex items-center justify-between">
+          <span>Teams</span>
+          <b className="tabular-nums">{teams.length}</b>
+        </div>
+        <div className="p-4 flex items-center justify-between">
+          <span>Owners signed up</span>
+          <b className={unlinked.length ? 'text-[var(--color-pick-loss,#ff453a)]' : 'text-[var(--color-accent)]'}>
+            {teams.length - unlinked.length}/{teams.length}
+          </b>
+        </div>
+        <div className="p-4 flex items-center justify-between">
+          <span>Draftable players</span>
+          <b className="tabular-nums">{poolCount ?? '—'}</b>
+        </div>
+        <div className="p-4 flex items-center justify-between">
+          <span>Rounds (from league config)</span>
+          <b className="tabular-nums">{rounds ?? '—'}</b>
+        </div>
+        <div className="p-4 flex items-center justify-between">
+          <span>Draft</span>
+          <b className={draftRef.draftId ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted-foreground)]'}>
+            {draftRef.draftId ? draftRef.status : 'not created'}
+          </b>
+        </div>
+      </div>
+
+      {unlinked.length > 0 && (
+        <p className="text-sm text-[var(--color-key,#ffb000)] mb-4">
+          Waiting on: {unlinked.map((t) => t.name).join(', ')} — their owners need to sign up with
+          the invited email before the draft can start.
+        </p>
+      )}
+
+      {!draftRef.draftId ? (
+        <button
+          onClick={create}
+          disabled={busy || teams.length < 2}
+          className="w-full min-h-[3rem] rounded-lg font-bold bg-[var(--color-accent)] text-[var(--color-accent-foreground)] disabled:opacity-50"
+        >
+          {busy ? 'Creating…' : 'Create draft'}
+        </button>
+      ) : (
+        <Link
+          to={`/league/${leagueId}/draft`}
+          className="block w-full min-h-[3rem] rounded-lg font-bold bg-[var(--color-accent)] text-[var(--color-accent-foreground)] flex items-center justify-center"
+        >
+          Open the draft room →
+        </Link>
+      )}
+      <p className="text-xs text-[var(--color-muted-foreground)] mt-3">
+        Start, pause and restart live in the draft room. Order is team creation order; picks run on
+        a 2-minute clock with autodraft from each owner's queue.
+      </p>
     </div>
   )
 }

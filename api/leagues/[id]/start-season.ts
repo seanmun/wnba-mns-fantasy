@@ -4,6 +4,8 @@ import { verifyAuth, canManageLeague } from '../../_middleware.js'
 import { db } from '../../_db.js'
 import { mnsLeagues } from '../../../src/lib/db/schema.js'
 import { logger } from '../../_logger.js'
+import { generateSeasonSchedule } from '../../../src/lib/season/schedule.js'
+import type { LeagueConfig } from '../../../src/types/leagueConfig.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -24,7 +26,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const [league] = await db
-      .select({ seasonStartedAt: mnsLeagues.seasonStartedAt })
+      .select({ seasonStartedAt: mnsLeagues.seasonStartedAt, config: mnsLeagues.config })
       .from(mnsLeagues)
       .where(eq(mnsLeagues.id, leagueId))
       .limit(1)
@@ -32,6 +34,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (league.seasonStartedAt) {
       return res.status(409).json({ error: 'Season already started' })
     }
+
+    // Starting the season IS the schedule: week rows + round-robin
+    // matchups, in the same transition. A season with no schedule was
+    // the old behaviour — a phase flip and nothing else.
+    const schedule = await generateSeasonSchedule(db, leagueId, league.config as LeagueConfig)
 
     const now = new Date()
     const [row] = await db
@@ -50,6 +57,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       leaguePhase: row.leaguePhase,
       seasonStartedAt: row.seasonStartedAt?.toISOString() ?? null,
+      weeks: schedule.weeks,
+      matchups: schedule.matchups,
     })
   } catch (err) {
     logger.error('POST /api/leagues/[id]/start-season failed', {

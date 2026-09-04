@@ -283,7 +283,7 @@ function RookiePickBoard({
             Add at least two teams before setting the rookie draft order.
           </p>
           <Link
-            to="/lm/teams"
+            to="../teams"
             className="inline-block px-5 py-2 bg-green-500 hover:bg-green-400 text-black font-bold rounded-lg"
           >
             Manage teams

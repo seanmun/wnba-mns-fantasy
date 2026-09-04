@@ -21,6 +21,9 @@ export interface LeagueConfig {
     year: number
     startDate: string
     weeks: number
+    // Which feed writes stat lines: real box scores, or the seeded
+    // simulator (test seasons, league gaps). Default 'espn'.
+    statSource?: 'espn' | 'sim'
   }
   roster: {
     activeSize: number

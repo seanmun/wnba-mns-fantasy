@@ -5,7 +5,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import * as Sentry from '@sentry/react'
 import { logger } from './lib/logger'
 import { App } from './App'
+import { initTheme } from './ui/theme'
 import './index.css'
+
+// Stamp the remembered theme before React mounts — after would flash
+// the wrong palette on every load for anyone who has toggled.
+initTheme()
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 if (!clerkPubKey) {

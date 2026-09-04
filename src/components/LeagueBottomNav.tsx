@@ -1,7 +1,15 @@
+import { useParams } from 'react-router-dom'
+import { BottomTabBar } from '../ui/components'
+
+// The constitution's one nav model: Home · Play · Standings, always
+// visible inside a league, current tab lit. mns-ui owns the look.
 export function LeagueBottomNav() {
+  const { leagueId = '' } = useParams()
   return (
-    <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-mns-card border-t border-white/5 px-4 py-2 text-sm text-gray-400">
-      TODO: LeagueBottomNav
-    </nav>
+    <BottomTabBar
+      basePath={`/league/${leagueId}`}
+      playLabel="My Team"
+      playPath="my-team"
+    />
   )
 }
