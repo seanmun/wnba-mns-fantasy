@@ -146,12 +146,38 @@ export function AdminDraftSetup() {
           </button>
         </>
       ) : (
-        <Link
-          to={`/league/${leagueId}/draft`}
-          className="block w-full min-h-[3rem] rounded-lg font-bold bg-[var(--color-accent)] text-[var(--color-accent-foreground)] flex items-center justify-center"
-        >
-          Open the draft room →
-        </Link>
+        <>
+          <Link
+            to={`/league/${leagueId}/draft`}
+            className="block w-full min-h-[3rem] rounded-lg font-bold bg-[var(--color-accent)] text-[var(--color-accent-foreground)] flex items-center justify-center"
+          >
+            Open the draft room →
+          </Link>
+          {draftRef.status === 'setup' && (
+            <button
+              onClick={async () => {
+                const next = draftRef.pace === 'slow' ? 'live' : 'slow'
+                setBusy(true)
+                try {
+                  await apiFetch(`/api/leagues/${leagueId}/draft`, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'set_pace', pace: next }),
+                  })
+                  toast.success(next === 'slow' ? 'Slow draft — 12h a pick' : 'Live draft — 2-minute clock')
+                  refresh()
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : 'Failed')
+                } finally {
+                  setBusy(false)
+                }
+              }}
+              disabled={busy}
+              className="w-full mt-2 min-h-[3rem] rounded-lg font-bold border-2 border-[var(--color-border-interactive,var(--color-border))] disabled:opacity-50"
+            >
+              Switch to {draftRef.pace === 'slow' ? 'live (2-min clock)' : 'slow (12h a pick)'}
+            </button>
+          )}
+        </>
       )}
       <p className="text-xs text-[var(--color-muted-foreground)] mt-3">
         Start, pause and restart live in the draft room. Order is team creation order; autodraft

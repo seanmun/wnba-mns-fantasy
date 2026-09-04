@@ -249,6 +249,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(result)
     }
 
+    // Pace is changeable until the first pick exists — the hub refuses
+    // set_config after start, which is the real guard; this just keeps
+    // our stored copy honest.
+    if (action === 'set_pace') {
+      const nextPace = req.body?.pace === 'slow' ? 'slow' : 'live'
+      await controlDraft(draftRow.id, {
+        action: 'set_config',
+        pickSeconds: nextPace === 'slow' ? null : 120,
+        slowPickHours: 12,
+      })
+      await db
+        .update(mnsDrafts)
+        .set({ settings: sql`settings || ${JSON.stringify({ pace: nextPace })}::jsonb`, updatedAt: new Date() })
+        .where(eq(mnsDrafts.id, draftRow.id))
+      return res.status(200).json({ ok: true, pace: nextPace })
+    }
+
     return res.status(400).json({ error: `Unknown action: ${action}` })
   } catch (error) {
     logger.error('POST /api/leagues/[id]/draft failed', {
