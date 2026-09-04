@@ -23,8 +23,11 @@ export interface DraftCurrentPick {
 }
 
 export interface DraftSettings {
-  allowAdminOverride: boolean
-  isTestDraft: boolean
+  allowAdminOverride?: boolean
+  isTestDraft?: boolean
+  // 'live' = 2-minute clock; 'slow' = 12h a pick, hub emails whoever
+  // is up. Chosen at create, honoured at start.
+  pace?: 'live' | 'slow'
 }
 
 export interface Draft {

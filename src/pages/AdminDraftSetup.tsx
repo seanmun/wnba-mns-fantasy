@@ -18,9 +18,14 @@ export function AdminDraftSetup() {
   const { apiFetch } = useApi()
   const { currentLeague } = useLeague()
   const [teams, setTeams] = useState<TeamRow[] | null>(null)
-  const [draftRef, setDraftRef] = useState<{ draftId: string | null; status: string | null } | null>(null)
+  const [draftRef, setDraftRef] = useState<{
+    draftId: string | null
+    status: string | null
+    pace?: 'live' | 'slow' | null
+  } | null>(null)
   const [poolCount, setPoolCount] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
+  const [pace, setPace] = useState<'live' | 'slow'>('live')
 
   const refresh = () => {
     void apiFetch<TeamRow[]>(`/api/leagues/${leagueId}/teams`).then(setTeams).catch(() => setTeams([]))
@@ -39,7 +44,7 @@ export function AdminDraftSetup() {
     try {
       await apiFetch(`/api/leagues/${leagueId}/draft`, {
         method: 'POST',
-        body: JSON.stringify({ action: 'create' }),
+        body: JSON.stringify({ action: 'create', pace }),
       })
       toast.success('Draft created')
       refresh()
@@ -90,7 +95,9 @@ export function AdminDraftSetup() {
         <div className="p-4 flex items-center justify-between">
           <span>Draft</span>
           <b className={draftRef.draftId ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted-foreground)]'}>
-            {draftRef.draftId ? draftRef.status : 'not created'}
+            {draftRef.draftId
+              ? `${draftRef.status}${draftRef.pace ? ` · ${draftRef.pace}` : ''}`
+              : 'not created'}
           </b>
         </div>
       </div>
@@ -103,13 +110,41 @@ export function AdminDraftSetup() {
       )}
 
       {!draftRef.draftId ? (
-        <button
-          onClick={create}
-          disabled={busy || teams.length < 2}
-          className="w-full min-h-[3rem] rounded-lg font-bold bg-[var(--color-accent)] text-[var(--color-accent-foreground)] disabled:opacity-50"
-        >
-          {busy ? 'Creating…' : 'Create draft'}
-        </button>
+        <>
+          {/* Pace decides the whole experience: a room everyone sits
+              in, or a board that lives in your pocket for days. */}
+          <div className="grid sm:grid-cols-2 gap-2 mb-4" role="radiogroup" aria-label="Draft pace">
+            {(
+              [
+                ['live', 'Live draft', '2-minute pick clock. Everyone drafts together in the room.'],
+                ['slow', 'Slow draft', '12 hours a pick, no clock pressure. You get an email when you are up; autodraft covers you if time runs out.'],
+              ] as const
+            ).map(([key, label, desc]) => (
+              <button
+                key={key}
+                role="radio"
+                aria-checked={pace === key}
+                onClick={() => setPace(key)}
+                className={
+                  'text-left rounded-lg border-2 p-3 transition-colors ' +
+                  (pace === key
+                    ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)]'
+                    : 'border-[var(--color-border)] bg-mns-card')
+                }
+              >
+                <span className="block font-bold">{label}</span>
+                <span className="block text-sm text-[var(--color-muted-foreground)]">{desc}</span>
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={create}
+            disabled={busy || teams.length < 2}
+            className="w-full min-h-[3rem] rounded-lg font-bold bg-[var(--color-accent)] text-[var(--color-accent-foreground)] disabled:opacity-50"
+          >
+            {busy ? 'Creating…' : `Create ${pace} draft`}
+          </button>
+        </>
       ) : (
         <Link
           to={`/league/${leagueId}/draft`}
@@ -119,8 +154,9 @@ export function AdminDraftSetup() {
         </Link>
       )}
       <p className="text-xs text-[var(--color-muted-foreground)] mt-3">
-        Start, pause and restart live in the draft room. Order is team creation order; picks run on
-        a 2-minute clock with autodraft from each owner's queue.
+        Start, pause and restart live in the draft room. Order is team creation order; autodraft
+        picks from each owner's queue when their time runs out. To change pace, restart the draft
+        from the room and recreate it here.
       </p>
     </div>
   )

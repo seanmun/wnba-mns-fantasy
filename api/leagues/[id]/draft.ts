@@ -44,8 +44,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .limit(1)
 
   if (req.method === 'GET') {
+    const pace =
+      ((draftRow?.settings as { pace?: string } | null)?.pace ?? 'live') === 'slow'
+        ? 'slow'
+        : 'live'
     return res.status(200).json(
-      draftRow ? { draftId: draftRow.id, status: draftRow.status } : { draftId: null, status: null }
+      draftRow
+        ? { draftId: draftRow.id, status: draftRow.status, pace }
+        : { draftId: null, status: null, pace: null }
     )
   }
 
@@ -122,6 +128,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const rounds = config.draft?.rounds ?? config.roster?.activeSize ?? 10
     const draftName = `${league.name} · ${league.seasonYear} veteran draft`
 
+    // Pace: 'live' = 2-minute clock, everyone in the room. 'slow' = no
+    // clock, 12 hours a pick, the hub emails whoever is up. Chosen at
+    // create, stored in settings, honoured again at start.
+    const storedPace = (draftRow?.settings as { pace?: string } | null)?.pace
+    const pace = (req.body?.pace ?? storedPace) === 'slow' ? 'slow' : 'live'
+    const pickSeconds = pace === 'slow' ? null : 120
+
     if (action === 'create') {
       if (draftRow) return res.status(409).json({ error: 'Draft already created' })
 
@@ -155,7 +168,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // config could ask for maps onto snake for now.
           orderType: 'snake',
           rounds,
-          pickSeconds: 120,
+          pickSeconds,
           slowPickHours: 12,
           createdBy: userId,
           participants,
@@ -170,8 +183,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         seasonYear: league.seasonYear,
         status: 'setup',
         createdBy: userId,
+        settings: { pace },
       })
-      return res.status(201).json({ draftId })
+      return res.status(201).json({ draftId, pace })
     }
 
     if (!draftRow) return res.status(400).json({ error: 'No draft has been created yet' })
@@ -196,7 +210,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await controlDraft(draftRow.id, {
         action: 'set_config',
         rounds,
-        pickSeconds: 120,
+        pickSeconds,
+        slowPickHours: 12,
         name: draftName,
       })
       const result = await controlDraft(draftRow.id, { action: 'start' })
