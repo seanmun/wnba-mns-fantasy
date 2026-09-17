@@ -76,8 +76,13 @@ const datesBetween = (start: string, end: string) => {
   for (let d = start; d <= end && out.length < 14; d = shiftDate(d, 1)) out.push(d)
   return out
 }
-const fmtChip = (date: string) =>
-  new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', timeZone: 'UTC' })
+const chipParts = (date: string) => {
+  const d = new Date(`${date}T12:00:00Z`)
+  return {
+    num: d.toLocaleDateString('en-US', { day: 'numeric', timeZone: 'UTC' }),
+    dow: d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }),
+  }
+}
 const fmtTip = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })
 
@@ -221,23 +226,31 @@ export function MatchupDetail() {
       )}
 
       {/* The week, one day at a time — who suits up on each date. */}
-      <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1">
-        {weekDays.map((d) => (
-          <button
-            key={d}
-            onClick={() => setSelDate(d)}
-            aria-pressed={d === day.date}
-            className={
-              'shrink-0 rounded-lg px-3 py-1.5 min-h-[2.75rem] border text-sm tabular-nums ' +
-              (d === day.date
-                ? 'border-[var(--color-accent)] text-[var(--color-accent)] font-bold'
-                : 'border-[var(--color-border)] text-[var(--color-muted-foreground)]') +
-              (d === day.today ? ' underline underline-offset-4' : '')
-            }
-          >
-            {fmtChip(d)}
-          </button>
-        ))}
+      <div className="mb-4 flex gap-1">
+        {weekDays.map((d) => {
+          const { num, dow } = chipParts(d)
+          return (
+            <button
+              key={d}
+              onClick={() => setSelDate(d)}
+              aria-pressed={d === day.date}
+              aria-label={`${dow} ${num}${d === day.today ? ' (today)' : ''}`}
+              className={
+                'flex-1 min-w-0 flex flex-col items-center rounded-lg py-1.5 min-h-[3rem] border tabular-nums ' +
+                (d === day.date
+                  ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
+                  : 'border-[var(--color-border)] text-[var(--color-muted-foreground)]')
+              }
+            >
+              <span className={'text-sm leading-tight' + (d === day.date ? ' font-bold' : '')}>
+                {num}
+              </span>
+              <span className={'text-[0.62rem] uppercase tracking-wide leading-tight' + (d === day.today ? ' underline underline-offset-2' : '')}>
+                {dow}
+              </span>
+            </button>
+          )
+        })}
       </div>
 
       <div className="grid sm:grid-cols-2 gap-6">
