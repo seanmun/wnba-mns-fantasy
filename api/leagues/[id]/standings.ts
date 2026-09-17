@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { eq } from 'drizzle-orm'
 import { verifyAuth } from '../../_middleware.js'
 import { db } from '../../_db.js'
-import { mnsTeamOwners, mnsTeams } from '../../../src/lib/db/schema.js'
+import { mnsPlayers, mnsTeamOwners, mnsTeams } from '../../../src/lib/db/schema.js'
 import { computeStandings } from '../../../src/lib/season/score.js'
 import { logger } from '../../_logger.js'
 
@@ -31,6 +31,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const rec = await computeStandings(db, leagueId)
+    const salaries = await db
+      .select({ teamId: mnsPlayers.teamId, salary: mnsPlayers.salary })
+      .from(mnsPlayers)
+      .where(eq(mnsPlayers.leagueId, leagueId))
+    const salaryByTeam = new Map<string, number>()
+    for (const p of salaries) {
+      if (!p.teamId) continue
+      salaryByTeam.set(p.teamId, (salaryByTeam.get(p.teamId) ?? 0) + (p.salary ?? 0))
+    }
     const rows = teams.map((t) => {
       const r = rec.get(t.id) ?? { wins: 0, losses: 0, ties: 0, pointsFor: 0 }
       return {
@@ -45,6 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         losses: r.losses,
         ties: r.ties,
         pointsFor: r.pointsFor,
+        salary: salaryByTeam.get(t.id) ?? 0,
       }
     })
     return res.status(200).json(rows)
