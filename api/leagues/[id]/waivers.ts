@@ -17,6 +17,7 @@ import {
   waiverLog,
   waiverPriority,
 } from '../../../src/lib/season/waivers.js'
+import { seasonAverages } from '../../../src/lib/season/stats.js'
 import { logger } from '../../_logger.js'
 
 // The waiver wire. Claims submitted today clear tomorrow at 8am ET,
@@ -53,40 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .from(mnsPlayers)
         .where(eq(mnsPlayers.leagueId, leagueId))
 
-      // Season averages from the real box scores on file — the
-      // research half of "who do I pick up".
-      const agg = await db
-        .select({
-          playerId: mnsPlayerStatLines.playerId,
-          gp: sql<number>`count(*) filter (where ${mnsPlayerStatLines.min} > 0)`,
-          pts: sql<number>`coalesce(sum(${mnsPlayerStatLines.pts}), 0)`,
-          reb: sql<number>`coalesce(sum(${mnsPlayerStatLines.reb}), 0)`,
-          ast: sql<number>`coalesce(sum(${mnsPlayerStatLines.ast}), 0)`,
-          stl: sql<number>`coalesce(sum(${mnsPlayerStatLines.stl}), 0)`,
-          blk: sql<number>`coalesce(sum(${mnsPlayerStatLines.blk}), 0)`,
-          tpm: sql<number>`coalesce(sum(${mnsPlayerStatLines.tpm}), 0)`,
-          fgm: sql<number>`coalesce(sum(${mnsPlayerStatLines.fgm}), 0)`,
-          fga: sql<number>`coalesce(sum(${mnsPlayerStatLines.fga}), 0)`,
-        })
-        .from(mnsPlayerStatLines)
-        .where(eq(mnsPlayerStatLines.leagueId, leagueId))
-        .groupBy(mnsPlayerStatLines.playerId)
-      const per = (v: number, gp: number) => (gp > 0 ? Math.round((v / gp) * 10) / 10 : 0)
-      const avgByPlayer = new Map(
-        agg.map((a) => [
-          a.playerId,
-          {
-            gp: Number(a.gp),
-            ppg: per(Number(a.pts), Number(a.gp)),
-            rpg: per(Number(a.reb), Number(a.gp)),
-            apg: per(Number(a.ast), Number(a.gp)),
-            spg: per(Number(a.stl), Number(a.gp)),
-            bpg: per(Number(a.blk), Number(a.gp)),
-            tpg: per(Number(a.tpm), Number(a.gp)),
-            fgPct: Number(a.fga) > 0 ? Math.round((Number(a.fgm) / Number(a.fga)) * 1000) / 10 : 0,
-          },
-        ])
-      )
+      const avgByPlayer = await seasonAverages(db, leagueId)
 
       const teams = await db.select().from(mnsTeams).where(eq(mnsTeams.leagueId, leagueId))
       const teamName = new Map(teams.map((t) => [t.id, t.name]))
