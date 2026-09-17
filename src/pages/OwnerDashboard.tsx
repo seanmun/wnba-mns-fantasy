@@ -68,7 +68,9 @@ function CapCard({
         </span>
         <span className="tabular-nums">
           <b>{fmtM(capUsed)}</b>
-          <span className="text-sm text-[var(--color-muted-foreground)]"> of {fmtM(cap.hardCap)} hard cap</span>
+          <span className="text-sm text-[var(--color-muted-foreground)]">
+            {' '}of {fmtM(cap.hardCap)} · {fmtM(Math.max(0, cap.hardCap - capUsed))} room
+          </span>
         </span>
       </div>
       <div className="relative h-3 rounded-full bg-[var(--color-border)] overflow-hidden">
@@ -92,20 +94,12 @@ function CapCard({
           />
         ))}
       </div>
-      {/* Labels anchored to their REAL positions, connector down from
-          the tick, staggered two rows so near thresholds never collide. */}
-      <div className="relative h-14 mb-1">
-        {thresholds.map((t, i) => (
-          <div
-            key={t.label}
-            className="absolute flex flex-col items-center"
-            style={{ left: `${Math.min(94, Math.max(6, pct(t.value)))}%`, transform: 'translateX(-50%)' }}
-          >
-            <div style={{ width: 2, height: i % 2 === 0 ? 8 : 26, background: t.color }} />
-            <span className="text-[0.65rem] tabular-nums whitespace-nowrap" style={{ color: t.color }}>
-              {t.label} {fmtM(t.value)}
-            </span>
-          </div>
+      <div className="mt-2 mb-2 flex flex-wrap gap-x-4 gap-y-1">
+        {thresholds.map((t) => (
+          <span key={t.label} className="inline-flex items-center gap-1.5 text-[0.72rem] tabular-nums" style={{ color: t.color }}>
+            <span aria-hidden="true" style={{ width: 10, height: 3, borderRadius: 2, background: t.color, display: 'inline-block' }} />
+            {t.label} {fmtM(t.value)}
+          </span>
         ))}
       </div>
       <p className="text-sm">
