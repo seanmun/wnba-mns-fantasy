@@ -6,6 +6,7 @@ import {
   mnsPlayerStatLines,
 } from '../db/schema.js'
 import { computeMatchupResult, type CategoryStats } from '../../rules/scoringRules.js'
+import { lineupResolver } from './lineups.js'
 import type { LeagueConfig } from '../../types/leagueConfig.js'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -47,7 +48,8 @@ export function easternToday(now = new Date()): string {
 // corrected box or a re-run always lands on the same answer. Rosters
 // are read AS OF NOW — waivers and trades change the team that scores
 // going forward, which for a weekly total means the current roster
-// owns the week. (Daily lineups are deliberately out of the test.)
+// owns the week. Slots are per-date: each stat line counts only if its
+// player was ACTIVE in that team's lineup on that date.
 export async function scoreLeagueWeek(
   db: Db,
   leagueId: string,
@@ -76,24 +78,20 @@ export async function scoreLeagueWeek(
   if (matchups.length === 0) return { scored: 0, finalized: 0 }
 
   // ACTIVE players only — bench and IR are real decisions with real
-  // cost: their lines exist but never count. The current slot owns the
-  // week, same rule as the current roster owning the week.
+  // cost: their lines exist but never count. Active is judged PER DATE
+  // from the daily lineups (the slot set that day owns that day), while
+  // the current roster still owns the week's membership.
   const teamIds = [
     ...new Set(matchups.flatMap((m: { homeTeamId: string; awayTeamId: string }) => [m.homeTeamId, m.awayTeamId])),
   ] as string[]
   const rostered = await db
-    .select({ id: mnsPlayers.id, teamId: mnsPlayers.teamId })
+    .select({ id: mnsPlayers.id, teamId: mnsPlayers.teamId, slot: mnsPlayers.slot })
     .from(mnsPlayers)
-    .where(
-      and(
-        eq(mnsPlayers.leagueId, leagueId),
-        inArray(mnsPlayers.teamId, teamIds),
-        eq(mnsPlayers.slot, 'active')
-      )
-    )
-  const teamByPlayer = new Map(
-    rostered.map((p: { id: string; teamId: string }) => [p.id, p.teamId])
+    .where(and(eq(mnsPlayers.leagueId, leagueId), inArray(mnsPlayers.teamId, teamIds)))
+  const rosterByPlayer = new Map(
+    rostered.map((p: { id: string; teamId: string; slot: string | null }) => [p.id, p])
   )
+  const resolveSlot = await lineupResolver(db, leagueId, endDate)
 
   const lines = rostered.length
     ? await db
@@ -112,8 +110,10 @@ export async function scoreLeagueWeek(
   const zero = () => ({ pts: 0, fgm: 0, fga: 0, ftm: 0, fta: 0, tpm: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0 })
   const totals = new Map<string, ReturnType<typeof zero>>()
   for (const l of lines) {
-    const teamId = teamByPlayer.get(l.playerId)
-    if (!teamId) continue
+    const p = rosterByPlayer.get(l.playerId) as { teamId: string; slot: string | null } | undefined
+    if (!p) continue
+    const teamId = p.teamId
+    if (resolveSlot(teamId, l.playerId, l.date, p.slot) !== 'active') continue
     const t = totals.get(teamId as string) ?? zero()
     t.pts += l.pts; t.fgm += l.fgm; t.fga += l.fga; t.ftm += l.ftm; t.fta += l.fta
     t.tpm += l.tpm; t.reb += l.reb; t.ast += l.ast; t.stl += l.stl; t.blk += l.blk; t.tov += l.tov

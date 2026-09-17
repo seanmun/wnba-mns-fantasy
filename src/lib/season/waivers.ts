@@ -141,14 +141,22 @@ export async function processWaivers(
 
   const hardCap = config.cap?.enabled ? config.cap.hardCap : null
 
+  const activeSize = config.roster?.activeSize ?? 10
   for (const claim of due) {
     result.processed++
-    const drop = byId.get(claim.dropPlayerId) as { id: string; teamId: string | null; salary: number } | undefined
+    const drop = claim.dropPlayerId
+      ? (byId.get(claim.dropPlayerId) as { id: string; teamId: string | null; salary: number; name?: string } | undefined)
+      : null
     let grantedId: string | null = null
     let reason: string | null = null
 
-    if (!drop || drop.teamId !== claim.teamId) {
+    const rosterCount = (players as Array<{ teamId: string | null }>).filter(
+      (p) => p.teamId === claim.teamId
+    ).length
+    if (claim.dropPlayerId && (!drop || drop.teamId !== claim.teamId)) {
       reason = 'The player you offered to drop is no longer on your roster.'
+    } else if (!claim.dropPlayerId && rosterCount >= activeSize) {
+      reason = 'Your roster is full — resubmit with a drop.'
     } else {
       for (const addId of claim.addPlayerIds as string[]) {
         const add = byId.get(addId) as { id: string; teamId: string | null; salary: number } | undefined
@@ -157,7 +165,7 @@ export async function processWaivers(
           const rosterSalary = (players as Array<{ teamId: string | null; salary: number }>)
             .filter((p) => p.teamId === claim.teamId)
             .reduce((n, p) => n + (p.salary ?? 0), 0)
-          if (rosterSalary - (drop.salary ?? 0) + (add.salary ?? 0) > hardCap) {
+          if (rosterSalary - (drop?.salary ?? 0) + (add.salary ?? 0) > hardCap) {
             reason = 'That add would put you over the hard cap.'
             continue
           }
@@ -173,21 +181,25 @@ export async function processWaivers(
         .update(mnsPlayers)
         .set({ teamId: claim.teamId, slot: 'active' })
         .where(and(eq(mnsPlayers.leagueId, leagueId), eq(mnsPlayers.id, grantedId)))
-      await db
-        .update(mnsPlayers)
-        .set({ teamId: null, slot: 'active' })
-        .where(and(eq(mnsPlayers.leagueId, leagueId), eq(mnsPlayers.id, claim.dropPlayerId)))
+      if (claim.dropPlayerId) {
+        await db
+          .update(mnsPlayers)
+          .set({ teamId: null, slot: 'active' })
+          .where(and(eq(mnsPlayers.leagueId, leagueId), eq(mnsPlayers.id, claim.dropPlayerId)))
+        ;(byId.get(claim.dropPlayerId) as { teamId: string | null }).teamId = null
+      }
       // Keep the in-memory picture current so later claims this pass
       // see the grant — contention is decided HERE, in priority order.
       ;(byId.get(grantedId) as { teamId: string | null }).teamId = claim.teamId
-      ;(byId.get(claim.dropPlayerId) as { teamId: string | null }).teamId = null
       await db
         .update(mnsWaiverClaims)
         .set({ status: 'granted', grantedPlayerId: grantedId, processedAt: now, updatedAt: now })
         .where(eq(mnsWaiverClaims.id, claim.id))
       await logTransaction(db, leagueId, 'waiver', [claim.teamId], {
         added: (byId.get(grantedId) as { name?: string })?.name ?? grantedId,
-        dropped: (byId.get(claim.dropPlayerId) as { name?: string })?.name ?? claim.dropPlayerId,
+        ...(claim.dropPlayerId
+          ? { dropped: (byId.get(claim.dropPlayerId) as { name?: string })?.name ?? claim.dropPlayerId }
+          : {}),
       })
       result.granted++
     } else {

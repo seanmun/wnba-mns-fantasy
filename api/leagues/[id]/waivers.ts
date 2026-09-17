@@ -76,8 +76,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const log = await waiverLog(db, leagueId)
 
+      const cfg = league.config as import('../../../src/types/leagueConfig.js').LeagueConfig
       return res.status(200).json({
         myTeamId: mine?.teamId ?? null,
+        activeSize: cfg.roster?.activeSize ?? 10,
         // 'open' = instant add/drop until today's first tip; 'waivers'
         // = claims queue for tomorrow morning's clear.
         window: window.mode,
@@ -99,14 +101,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               addPlayerIds: myClaim.addPlayerIds,
               addNames: (myClaim.addPlayerIds as string[]).map((id) => playerName.get(id) ?? id),
               dropPlayerId: myClaim.dropPlayerId,
-              dropName: playerName.get(myClaim.dropPlayerId) ?? myClaim.dropPlayerId,
+              dropName: myClaim.dropPlayerId
+                ? playerName.get(myClaim.dropPlayerId) ?? myClaim.dropPlayerId
+                : null,
             }
           : null,
         log: log.map((c: typeof mnsWaiverClaims.$inferSelect) => ({
           teamName: teamName.get(c.teamId) ?? c.teamId,
           status: c.status,
           granted: c.grantedPlayerId ? playerName.get(c.grantedPlayerId) ?? c.grantedPlayerId : null,
-          dropped: c.status === 'granted' ? playerName.get(c.dropPlayerId) ?? c.dropPlayerId : null,
+          dropped:
+            c.status === 'granted' && c.dropPlayerId
+              ? playerName.get(c.dropPlayerId) ?? c.dropPlayerId
+              : null,
           reason: c.failureReason,
           processedAt: c.processedAt,
         })),
@@ -117,16 +124,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (req.method === 'POST') {
       const addPlayerIds = (req.body?.addPlayerIds ?? []) as string[]
-      const dropPlayerId = String(req.body?.dropPlayerId ?? '')
-      if (!Array.isArray(addPlayerIds) || addPlayerIds.length === 0 || !dropPlayerId) {
-        return res.status(400).json({ error: 'Pick at least one player to add and one to drop.' })
+      const dropPlayerId: string | null = req.body?.dropPlayerId ? String(req.body.dropPlayerId) : null
+      if (!Array.isArray(addPlayerIds) || addPlayerIds.length === 0) {
+        return res.status(400).json({ error: 'Pick at least one player to add.' })
       }
       const players = await db
         .select({ id: mnsPlayers.id, teamId: mnsPlayers.teamId })
         .from(mnsPlayers)
         .where(eq(mnsPlayers.leagueId, leagueId))
       const byId = new Map(players.map((p) => [p.id, p]))
-      if (byId.get(dropPlayerId)?.teamId !== mine.teamId) {
+      const config = league.config as import('../../../src/types/leagueConfig.js').LeagueConfig
+      const activeSize = config.roster?.activeSize ?? 10
+      const myCount = players.filter((p) => p.teamId === mine.teamId).length
+      // A drop is only required when the roster is FULL — a straight
+      // drop earlier leaves a hole that gets filled add-only.
+      if (!dropPlayerId && myCount >= activeSize) {
+        return res.status(400).json({ error: 'Your roster is full — pick someone to drop.' })
+      }
+      if (dropPlayerId && byId.get(dropPlayerId)?.teamId !== mine.teamId) {
         return res.status(400).json({ error: 'That drop is not on your roster.' })
       }
       const notFree = addPlayerIds.filter((id) => byId.get(id)?.teamId != null || !byId.has(id))
@@ -139,8 +154,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const window = await faWindow()
       if (window.mode === 'open') {
         const addId = addPlayerIds[0]
-        const league2 = league.config as import('../../../src/types/leagueConfig.js').LeagueConfig
-        if (league2.cap?.enabled) {
+        if (config.cap?.enabled) {
           const rows = await db
             .select({ teamId: mnsPlayers.teamId, salary: mnsPlayers.salary, id: mnsPlayers.id })
             .from(mnsPlayers)
@@ -149,8 +163,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .filter((p) => p.teamId === mine.teamId)
             .reduce((n, p) => n + (p.salary ?? 0), 0)
           const addSal = rows.find((p) => p.id === addId)?.salary ?? 0
-          const dropSal = rows.find((p) => p.id === dropPlayerId)?.salary ?? 0
-          if (rosterSalary - dropSal + addSal > league2.cap.hardCap) {
+          const dropSal = dropPlayerId ? rows.find((p) => p.id === dropPlayerId)?.salary ?? 0 : 0
+          if (rosterSalary - dropSal + addSal > config.cap.hardCap) {
             return res.status(400).json({ error: 'That pickup would put you over the hard cap.' })
           }
         }
@@ -171,14 +185,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (took.length === 0) {
           return res.status(409).json({ error: 'Somebody beat you to that player — refresh and pick again.' })
         }
-        const [droppedRow] = await db
-          .update(mnsPlayers)
-          .set({ teamId: null, slot: 'active' })
-          .where(and(eq(mnsPlayers.leagueId, leagueId), eq(mnsPlayers.id, dropPlayerId)))
-          .returning({ name: mnsPlayers.name })
+        let droppedName: string | null = null
+        if (dropPlayerId) {
+          const [droppedRow] = await db
+            .update(mnsPlayers)
+            .set({ teamId: null, slot: 'active' })
+            .where(and(eq(mnsPlayers.leagueId, leagueId), eq(mnsPlayers.id, dropPlayerId)))
+            .returning({ name: mnsPlayers.name })
+          droppedName = droppedRow?.name ?? dropPlayerId
+        }
         await logTransaction(db, leagueId, 'add_drop', [mine.teamId], {
           added: took[0].name,
-          dropped: droppedRow?.name ?? dropPlayerId,
+          ...(droppedName ? { dropped: droppedName } : {}),
         })
         return res.status(200).json({ ok: true, instant: true, added: took[0].name })
       }

@@ -145,6 +145,56 @@ function pair(v: string): [number, number] {
   return m ? [Number(m[1]), Number(m[2])] : [0, 0]
 }
 
+// The pool's team codes came from the legacy mns port; ESPN spells a
+// few differently. ESPN's spelling -> ours.
+const CODE_ALIAS: Record<string, string> = {
+  WSH: 'WAS', LA: 'LAS', PHX: 'PHO', LV: 'LVA', NY: 'NYL', GS: 'GSV',
+}
+
+export interface DayGame {
+  opp: string
+  home: boolean
+  tip: string // ISO kickoff
+  state: 'pre' | 'in' | 'post'
+}
+
+// Who plays on an Eastern date, keyed by OUR team code. Empty map on
+// any ESPN hiccup — the lineup page then just shows no game notes.
+export async function dayGames(date: string): Promise<Map<string, DayGame>> {
+  try {
+    const yyyymmdd = date.replace(/-/g, '')
+    const board = (await (await fetch(`${ESPN}/scoreboard?dates=${yyyymmdd}`)).json()) as {
+      events?: Array<{
+        date: string
+        status: { type: { state: string } }
+        competitions?: Array<{
+          competitors?: Array<{ homeAway: string; team: { abbreviation: string } }>
+        }>
+      }>
+    }
+    const map = new Map<string, DayGame>()
+    for (const e of board.events ?? []) {
+      const comps = e.competitions?.[0]?.competitors ?? []
+      const sides = comps.map((c) => ({
+        code: CODE_ALIAS[c.team.abbreviation] ?? c.team.abbreviation,
+        home: c.homeAway === 'home',
+      }))
+      for (const side of sides) {
+        const opp = sides.find((x) => x.code !== side.code)
+        map.set(side.code, {
+          opp: opp?.code ?? '',
+          home: side.home,
+          tip: e.date,
+          state: (e.status.type.state as DayGame['state']) ?? 'pre',
+        })
+      }
+    }
+    return map
+  } catch {
+    return new Map()
+  }
+}
+
 export async function ingestEspnDay(
   db: Db,
   leagueId: string,

@@ -257,22 +257,32 @@ export const mnsRegularSeasonRosters = wnbaSchema.table(
 // DAILY LINEUPS
 // ============================================================================
 
+// One team's lineup for one Eastern date. `slots` is a FULL snapshot
+// ({ playerId: 'active'|'bench'|'ir' }) written whenever an owner sets
+// a slot for that day — today or ahead. The effective lineup for any
+// date is the latest row at/before it (set it once, it carries
+// forward); no row anywhere means the player's base slot. Past dates
+// never get new rows: that is the lock.
 export const mnsDailyLineups = wnbaSchema.table(
   'daily_lineups',
   {
-    id: text('id').primaryKey(),
+    id: text('id').primaryKey().default(sql`(gen_random_uuid())::text`),
     leagueId: text('league_id')
       .notNull()
       .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     teamId: text('team_id')
       .notNull()
       .references(() => mnsTeams.id, { onDelete: 'cascade' }),
-    gameDate: text('game_date').notNull(),
+    gameDate: text('game_date').notNull(), // YYYY-MM-DD Eastern
+    slots: jsonb('slots').$type<Record<string, string>>().notNull().default(sql`'{}'::jsonb`),
+    // Legacy mirror of slots (the mns port's shape) — kept in sync on
+    // write, never read.
     activePlayerIds: text('active_player_ids').array().notNull().default(sql`'{}'::text[]`),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
     updatedBy: text('updated_by'),
   },
   (t) => [
+    unique('mns_daily_lineups_team_date_key').on(t.teamId, t.gameDate),
     index('idx_mns_daily_lineups_team_date').on(t.teamId, t.gameDate),
   ]
 )
@@ -496,9 +506,9 @@ export const mnsWaiverClaims = wnbaSchema.table(
     // Eastern date (YYYY-MM-DD) this claim clears on.
     clearsOn: text('clears_on').notNull(),
     addPlayerIds: text('add_player_ids').array().notNull().default(sql`'{}'::text[]`),
-    dropPlayerId: text('drop_player_id')
-      .notNull()
-      .references(() => mnsPlayers.id),
+    // Optional since rosters may run short (a straight drop leaves a
+    // hole to fill add-only).
+    dropPlayerId: text('drop_player_id').references(() => mnsPlayers.id),
     status: text('status').notNull().default('pending'), // pending|granted|failed|withdrawn
     grantedPlayerId: text('granted_player_id'),
     failureReason: text('failure_reason'),

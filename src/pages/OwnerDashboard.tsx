@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
 import { toast } from 'sonner'
+import { ChevronLeft, ChevronRight, EllipsisVertical, X } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
 import { Button, Chip, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
 import { useLeague } from '../contexts/LeagueContext'
@@ -35,9 +36,58 @@ interface RosterPlayer {
     fgPct: number
   } | null
 }
+interface DayGame {
+  opp: string
+  home: boolean
+  tip: string
+  state: 'pre' | 'in' | 'post'
+}
+interface DayLine {
+  min: number
+  pts: number
+  reb: number
+  ast: number
+  stl: number
+  blk: number
+  fgm: number
+  fga: number
+}
+interface LineupDay {
+  date: string
+  today: string
+  locked: boolean
+  editable: boolean
+  slots: Record<string, string>
+  games: Record<string, DayGame>
+  lines: Record<string, DayLine>
+}
 
 const M = 1_000_000
 const fmtM = (n: number) => `$${(n / M).toFixed(1)}M`
+
+// Eastern calendar day, same convention as the server.
+const ET_DAY = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/New_York',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+const etToday = () => ET_DAY.format(new Date())
+const shiftDate = (date: string, days: number) =>
+  new Date(new Date(`${date}T12:00:00Z`).getTime() + days * 86400000).toISOString().slice(0, 10)
+const fmtDay = (date: string) =>
+  new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })
+const fmtTip = (iso: string) =>
+  new Date(iso).toLocaleTimeString('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
 
 // The cap picture, mns-style: one bar, four thresholds, current dues.
 function CapCard({
@@ -119,9 +169,11 @@ function CapCard({
   )
 }
 
-// A team's page: the roster, who owns it, cap usage. Reached from the
-// Teams grid (any team) or the My Team tab (yours). Waivers and trades
-// change what shows here; this page just tells the truth about now.
+// A team's page, one DAY at a time: the lineup as set for that date,
+// who plays, and the box lines once games run. Yesterday is locked
+// history; today and future days are editable, and a slot set ahead
+// sticks when its day arrives. Waivers and trades change what shows
+// here; this page just tells the truth about the chosen day.
 export function OwnerDashboard() {
   const { leagueId = '', teamId } = useParams()
   const { user } = useUser()
@@ -131,6 +183,10 @@ export function OwnerDashboard() {
   const [players, setPlayers] = useState<RosterPlayer[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [selDate, setSelDate] = useState(etToday)
+  const [day, setDay] = useState<LineupDay | null>(null)
+  const [openRow, setOpenRow] = useState<string | null>(null)
+  const [confirmDrop, setConfirmDrop] = useState<string | null>(null)
 
   const load = () => {
     Promise.all([
@@ -146,14 +202,32 @@ export function OwnerDashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [apiFetch, leagueId])
 
-  const moveSlot = async (playerId: string, slot: 'active' | 'bench' | 'ir') => {
+  // /my-team resolves to the team the caller owns; /team/:teamId shows
+  // any team in the league.
+  const team = teamId
+    ? teams?.find((t) => t.id === teamId)
+    : teams?.find((t) => t.owners.some((o) => o.userId != null && o.userId === user?.id))
+
+  const loadDay = () => {
+    if (!team) return
+    apiFetch<LineupDay>(`/api/leagues/${leagueId}/lineup?date=${selDate}&teamId=${team.id}`)
+      .then(setDay)
+      .catch(() => setDay(null))
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(loadDay, [apiFetch, leagueId, team?.id, selDate])
+
+  const moveSlot = async (playerId: string, slot: 'active' | 'bench' | 'ir' | 'drop') => {
     setBusy(true)
     try {
       await apiFetch(`/api/leagues/${leagueId}/roster`, {
         method: 'POST',
-        body: JSON.stringify({ playerId, slot }),
+        body: JSON.stringify(slot === 'drop' ? { playerId, slot } : { playerId, slot, date: selDate }),
       })
+      setOpenRow(null)
+      setConfirmDrop(null)
       load()
+      loadDay()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Move failed')
     } finally {
@@ -173,12 +247,6 @@ export function OwnerDashboard() {
     )
   }
 
-  // /my-team resolves to the team the caller owns; /team/:teamId shows
-  // any team in the league.
-  const team = teamId
-    ? teams.find((t) => t.id === teamId)
-    : teams.find((t) => t.owners.some((o) => o.userId != null && o.userId === user?.id))
-
   if (!team) {
     return (
       <EmptyState title={teamId ? 'Team not found' : "You don't own a team here"}>
@@ -192,9 +260,43 @@ export function OwnerDashboard() {
   const roster = players
     .filter((p) => p.teamId === team.id)
     .sort((a, b) => (b.salary ?? 0) - (a.salary ?? 0))
-  const bySlot = (s: string) => roster.filter((p) => (p.slot ?? 'active') === s)
   const capUsed = roster.reduce((n, p) => n + (p.salary ?? 0), 0)
   const mine = team.owners.some((o) => o.userId != null && o.userId === user?.id)
+
+  const today = etToday()
+  const minDate = currentLeague?.config.season?.startDate ?? shiftDate(today, -7)
+  const maxDate = shiftDate(today, 13)
+  const isToday = selDate === today
+  const locked = day ? day.locked : selDate < today
+  const editable = mine && !locked
+
+  // The day's slot for each player — the daily lineup when loaded,
+  // the base slot until then.
+  const slotOf = (p: RosterPlayer) => day?.slots[p.id] ?? p.slot ?? 'active'
+  const bySlot = (s: string) => roster.filter((p) => slotOf(p) === s)
+
+  const gameNote = (p: RosterPlayer) => {
+    if (!day) return null
+    const g = p.teamCode ? day.games[p.teamCode] : undefined
+    const line = day.lines[p.id]
+    if (line && (line.min > 0 || g?.state !== 'pre')) {
+      return (
+        <span className="text-[var(--color-accent)]">
+          {line.pts}p {line.reb}r {line.ast}a{line.stl ? ` ${line.stl}s` : ''}
+          {line.blk ? ` ${line.blk}b` : ''} · {line.min} min
+        </span>
+      )
+    }
+    if (!g) {
+      return <span className="text-[var(--color-muted-foreground)]">no game</span>
+    }
+    return (
+      <span className="text-[var(--color-foreground)]">
+        {g.home ? 'vs' : '@'} {g.opp}
+        {g.state === 'pre' ? ` · ${fmtTip(g.tip)}` : g.state === 'in' ? ' · live' : ' · final'}
+      </span>
+    )
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-2 pb-24">
@@ -208,6 +310,38 @@ export function OwnerDashboard() {
       {currentLeague?.config.cap?.enabled ? (
         <CapCard capUsed={capUsed} cap={currentLeague.config.cap} fees={currentLeague.config.fees} />
       ) : null}
+
+      {/* The day carousel: yesterday is history, tomorrow is a plan. */}
+      <div className="mb-4 flex items-center gap-2">
+        <Button
+          variant="quiet"
+          aria-label="Previous day"
+          disabled={selDate <= minDate}
+          onClick={() => { setSelDate(shiftDate(selDate, -1)); setOpenRow(null); setConfirmDrop(null) }}
+        >
+          <ChevronLeft aria-hidden />
+        </Button>
+        <div className="flex-1 text-center">
+          <div className="font-bold">{fmtDay(selDate)}</div>
+          <div className="text-xs text-[var(--color-muted-foreground)]">
+            {isToday ? 'Today' : locked ? 'Locked — this day is done' : 'Sets automatically on the day'}
+          </div>
+        </div>
+        <Button
+          variant="quiet"
+          aria-label="Next day"
+          disabled={selDate >= maxDate}
+          onClick={() => { setSelDate(shiftDate(selDate, 1)); setOpenRow(null); setConfirmDrop(null) }}
+        >
+          <ChevronRight aria-hidden />
+        </Button>
+        {!isToday ? (
+          <Button variant="quiet" onClick={() => { setSelDate(today); setOpenRow(null); setConfirmDrop(null) }}>
+            Today
+          </Button>
+        ) : null}
+      </div>
+
       {roster.length === 0 ? (
         <EmptyState title="No players yet">
           The roster fills from the draft, waivers and trades.
@@ -240,28 +374,27 @@ export function OwnerDashboard() {
                             ) : null}
                           </>
                         }
-                        sub={`${[p.position, p.teamCode, p.salary != null ? fmtM(p.salary) : null]
-                          .filter(Boolean)
-                          .join(' · ')}${p.avg && p.avg.gp > 0 ? ` — ${p.avg.gp}g · ${p.avg.ppg}p ${p.avg.rpg}r ${p.avg.apg}a · ${p.avg.fgPct}%` : ''}`}
+                        sub={
+                          <>
+                            {[p.position, p.teamCode, p.salary != null ? fmtM(p.salary) : null]
+                              .filter(Boolean)
+                              .join(' · ')}
+                            {day ? <> — {gameNote(p)}</> : null}
+                          </>
+                        }
                         end={
-                          mine ? (
-                            <span className="flex gap-1">
-                              {slotKey !== 'active' ? (
-                                <Button variant="quiet" onClick={() => moveSlot(p.id, 'active')} disabled={busy}>
-                                  Start
-                                </Button>
-                              ) : null}
-                              {slotKey !== 'bench' ? (
-                                <Button variant="quiet" onClick={() => moveSlot(p.id, 'bench')} disabled={busy}>
-                                  Bench
-                                </Button>
-                              ) : null}
-                              {slotKey !== 'ir' ? (
-                                <Button variant="quiet" onClick={() => moveSlot(p.id, 'ir')} disabled={busy}>
-                                  IR
-                                </Button>
-                              ) : null}
-                            </span>
+                          editable ? (
+                            <Button
+                              variant="quiet"
+                              aria-label={openRow === p.id ? `Close actions for ${p.name}` : `Move ${p.name}`}
+                              aria-expanded={openRow === p.id}
+                              onClick={() => {
+                                setOpenRow(openRow === p.id ? null : p.id)
+                                setConfirmDrop(null)
+                              }}
+                            >
+                              {openRow === p.id ? <X aria-hidden /> : <EllipsisVertical aria-hidden />}
+                            </Button>
                           ) : p.salary != null ? (
                             <span className="text-[0.9rem] text-[var(--color-muted-foreground)] tabular-nums">
                               ${p.salary.toLocaleString()}
@@ -269,6 +402,36 @@ export function OwnerDashboard() {
                           ) : undefined
                         }
                       />
+                      {editable && openRow === p.id ? (
+                        <div className="mt-1.5 mb-1 flex flex-wrap gap-1.5 justify-end">
+                          {slotKey !== 'active' ? (
+                            <Button variant="quiet" onClick={() => moveSlot(p.id, 'active')} disabled={busy}>
+                              Start
+                            </Button>
+                          ) : null}
+                          {slotKey !== 'bench' ? (
+                            <Button variant="quiet" onClick={() => moveSlot(p.id, 'bench')} disabled={busy}>
+                              Bench
+                            </Button>
+                          ) : null}
+                          {slotKey !== 'ir' ? (
+                            <Button variant="quiet" onClick={() => moveSlot(p.id, 'ir')} disabled={busy}>
+                              IR
+                            </Button>
+                          ) : null}
+                          {isToday ? (
+                            <Button
+                              variant={confirmDrop === p.id ? 'danger' : 'quiet'}
+                              onClick={() =>
+                                confirmDrop === p.id ? moveSlot(p.id, 'drop') : setConfirmDrop(p.id)
+                              }
+                              disabled={busy}
+                            >
+                              {confirmDrop === p.id ? `Confirm drop ${p.name.split(' ').pop()}` : 'Drop'}
+                            </Button>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </li>
                   ))}
                   {list.length === 0 ? (

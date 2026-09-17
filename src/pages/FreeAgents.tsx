@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useApi } from '../hooks/useApi'
+import { Plus } from 'lucide-react'
 import { Button, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
 
 interface PlayerAvg {
@@ -24,13 +25,14 @@ interface WirePlayer {
 }
 interface WireState {
   myTeamId: string | null
+  activeSize: number
   window: 'open' | 'waivers'
   firstTip: string | null
   clearsOn: string
   priority: Array<{ position: number; teamName: string; isMe: boolean }>
   myRoster: WirePlayer[]
   freeAgents: WirePlayer[]
-  myClaim: { addNames: string[]; dropName: string; clearsOn: string } | null
+  myClaim: { addNames: string[]; dropName: string | null; clearsOn: string } | null
   log: Array<{
     teamName: string
     status: string
@@ -98,12 +100,12 @@ export function FreeAgents() {
     })
 
   const submit = async () => {
-    if (!drop || adds.length === 0) return
+    if (adds.length === 0) return
     setBusy(true)
     try {
       await apiFetch(`/api/leagues/${leagueId}/waivers`, {
         method: 'POST',
-        body: JSON.stringify({ addPlayerIds: adds, dropPlayerId: drop }),
+        body: JSON.stringify({ addPlayerIds: adds, dropPlayerId: drop ?? undefined }),
       })
       toast.success(open ? 'Done — they\'re yours' : 'Claim in — clears tomorrow morning')
       setAdds([])
@@ -163,8 +165,9 @@ export function FreeAgents() {
 
       {state.myClaim ? (
         <div className="mb-4 rounded-lg border border-[var(--color-accent)] bg-mns-card p-3 text-sm">
-          <b>Pending claim</b> — add {state.myClaim.addNames.join(' → ')} · drop{' '}
-          {state.myClaim.dropName} · clears {state.myClaim.clearsOn}
+          <b>Pending claim</b> — add {state.myClaim.addNames.join(' → ')}
+          {state.myClaim.dropName ? <> · drop {state.myClaim.dropName}</> : null} · clears{' '}
+          {state.myClaim.clearsOn}
           <div className="mt-2">
             <Button variant="quiet" onClick={withdraw} disabled={busy}>
               Withdraw
@@ -190,7 +193,13 @@ export function FreeAgents() {
               ))}
             </span>
           ) : null}
-          <span className="text-sm font-bold">{drop ? 'Dropping:' : 'Now pick who to drop:'}</span>
+          <span className="text-sm font-bold">
+            {drop
+              ? 'Dropping:'
+              : state.myRoster.length < state.activeSize
+                ? 'Pick a drop, or skip it — you have an open spot:'
+                : 'Now pick who to drop:'}
+          </span>
           <div className="flex flex-wrap gap-1.5">
             {state.myRoster.map((p) => (
               <button
@@ -208,7 +217,11 @@ export function FreeAgents() {
             ))}
           </div>
           <div className="flex gap-2">
-            <Button className="flex-1" onClick={submit} disabled={busy || !drop}>
+            <Button
+              className="flex-1"
+              onClick={submit}
+              disabled={busy || (!drop && state.myRoster.length >= state.activeSize)}
+            >
               {busy ? 'Working…' : open ? 'Add now' : 'Submit claim'}
             </Button>
             <Button variant="quiet" onClick={() => { setAdds([]); setDrop(null) }}>
@@ -279,9 +292,10 @@ export function FreeAgents() {
                 state.myTeamId ? (
                   <Button
                     variant={adds.includes(p.id) ? 'primary' : 'quiet'}
+                    aria-label={adds.includes(p.id) ? `${p.name} is pick ${adds.indexOf(p.id) + 1}` : `Add ${p.name}`}
                     onClick={() => toggleAdd(p.id)}
                   >
-                    {adds.includes(p.id) ? `#${adds.indexOf(p.id) + 1}` : 'Add'}
+                    {adds.includes(p.id) ? `#${adds.indexOf(p.id) + 1}` : <Plus aria-hidden />}
                   </Button>
                 ) : undefined
               }

@@ -6,6 +6,7 @@ import { logger } from '../_logger.js'
 import { ingestEspnDay, ingestSimDay } from '../../src/lib/season/statSources.js'
 import { easternToday, matchupWeekFor, scoreLeagueWeek } from '../../src/lib/season/score.js'
 import { processWaivers } from '../../src/lib/season/waivers.js'
+import { applyLineupsForToday } from '../../src/lib/season/lineups.js'
 import type { LeagueConfig } from '../../src/types/leagueConfig.js'
 
 // The season heartbeat, hourly. For every league in its regular season:
@@ -37,6 +38,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const config = league.config as LeagueConfig
       const source =
         (config.season as { statSource?: string }).statSource === 'sim' ? 'sim' : 'espn'
+
+      // Rollover first: a lineup set for a day that has now arrived
+      // becomes the live one before anything scores.
+      await applyLineupsForToday(db, league.id, now)
 
       const days = [yesterday, today]
       let written = 0
