@@ -1,8 +1,246 @@
+import { useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
+import { toast } from 'sonner'
+import { useApi } from '../hooks/useApi'
+import { Button, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
+
+interface WirePlayer {
+  id: string
+  name: string
+  position: string | null
+  teamCode: string | null
+  salary: number | null
+}
+interface WireState {
+  myTeamId: string | null
+  clearsOn: string
+  priority: Array<{ position: number; teamName: string; isMe: boolean }>
+  myRoster: WirePlayer[]
+  freeAgents: WirePlayer[]
+  myClaim: { addNames: string[]; dropName: string; clearsOn: string } | null
+  log: Array<{
+    teamName: string
+    status: string
+    granted: string | null
+    dropped: string | null
+    reason: string | null
+  }>
+}
+
+const fmtSalary = (n: number | null) => (n != null ? `$${(n / 1000).toFixed(0)}k` : '')
+
+// The waiver wire: build an ordered wish list, name the drop, submit.
+// Claims clear tomorrow morning, best record first — one transaction
+// per team per day, resubmitting replaces.
 export function FreeAgents() {
+  const { leagueId = '' } = useParams()
+  const { apiFetch } = useApi()
+  const [state, setState] = useState<WireState | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [adds, setAdds] = useState<string[]>([])
+  const [drop, setDrop] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const refresh = () => {
+    apiFetch<WireState>(`/api/leagues/${leagueId}/waivers`)
+      .then(setState)
+      .catch((e: Error) => setError(e.message))
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(refresh, [leagueId])
+
+  if (error) return <EmptyState title="Something went wrong">{error}</EmptyState>
+  if (!state) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-6 flex flex-col gap-2">
+        <Skeleton h="2.2rem" w="55%" />
+        <Skeleton h="3.4rem" />
+        <Skeleton h="3.4rem" />
+      </div>
+    )
+  }
+
+  const toggleAdd = (id: string) =>
+    setAdds((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]))
+  const move = (i: number, d: number) =>
+    setAdds((a) => {
+      const t = i + d
+      if (t < 0 || t >= a.length) return a
+      const next = [...a]
+      ;[next[i], next[t]] = [next[t], next[i]]
+      return next
+    })
+
+  const submit = async () => {
+    if (!drop || adds.length === 0) return
+    setBusy(true)
+    try {
+      await apiFetch(`/api/leagues/${leagueId}/waivers`, {
+        method: 'POST',
+        body: JSON.stringify({ addPlayerIds: adds, dropPlayerId: drop }),
+      })
+      toast.success('Claim in — clears tomorrow morning')
+      setAdds([])
+      setDrop(null)
+      refresh()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const withdraw = async () => {
+    setBusy(true)
+    try {
+      await apiFetch(`/api/leagues/${leagueId}/waivers`, { method: 'DELETE' })
+      toast.success('Claim withdrawn')
+      refresh()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const nameOf = (id: string) => state.freeAgents.find((p) => p.id === id)?.name ?? id
+
   return (
-    <div className="p-6 text-gray-400">
-      <h1 className="text-xl text-white mb-2">FreeAgents</h1>
-      <p>TODO: implement</p>
+    <div className="max-w-2xl mx-auto px-4 py-2 pb-24">
+      <PageHeader
+        back={`/league/${leagueId}`}
+        backLabel="League home"
+        title="Free agents"
+        status={`Claims clear tomorrow at 8am ET, best record first. One move a day; resubmitting replaces.`}
+      />
+
+      {/* Waiver order — public, that's the strategy */}
+      <div className="mb-4 flex flex-wrap gap-1.5">
+        {state.priority.map((p) => (
+          <span
+            key={p.position}
+            className={
+              'text-xs rounded-full px-2.5 py-1 border ' +
+              (p.isMe
+                ? 'border-[var(--color-accent)] text-[var(--color-accent)] font-bold'
+                : 'border-[var(--color-border)] text-[var(--color-muted-foreground)]')
+            }
+          >
+            {p.position}. {p.teamName}
+          </span>
+        ))}
+      </div>
+
+      {state.myClaim ? (
+        <div className="mb-4 rounded-lg border border-[var(--color-accent)] bg-mns-card p-3 text-sm">
+          <b>Pending claim</b> — add {state.myClaim.addNames.join(' → ')} · drop{' '}
+          {state.myClaim.dropName} · clears {state.myClaim.clearsOn}
+          <div className="mt-2">
+            <Button variant="quiet" onClick={withdraw} disabled={busy}>
+              Withdraw
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {state.myTeamId && (adds.length > 0 || drop) ? (
+        <div className="mb-4 rounded-lg border border-[var(--color-border-interactive)] bg-mns-card p-3 text-sm flex flex-col gap-2">
+          <span>
+            <b>Your move:</b>{' '}
+            {adds.length ? `add ${adds.map(nameOf).join(' → ')}` : 'pick who to add'}
+            {' · '}
+            {drop ? `drop ${state.myRoster.find((p) => p.id === drop)?.name}` : 'pick who to drop'}
+          </span>
+          {adds.length > 1 ? (
+            <span className="text-xs text-[var(--color-muted-foreground)]">
+              Order matters — you get the first name still available.{' '}
+              {adds.map((id, i) => (
+                <span key={id} className="inline-flex items-center gap-0.5 mr-2">
+                  {i + 1}.{nameOf(id)}
+                  <button onClick={() => move(i, -1)} aria-label="Earlier">↑</button>
+                  <button onClick={() => move(i, 1)} aria-label="Later">↓</button>
+                </span>
+              ))}
+            </span>
+          ) : null}
+          <Button onClick={submit} disabled={busy || !drop || adds.length === 0}>
+            {busy ? 'Submitting…' : 'Submit claim'}
+          </Button>
+        </div>
+      ) : null}
+
+      <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-2">
+        Available
+      </h2>
+      <ul className="flex flex-col gap-1.5 mb-6">
+        {state.freeAgents.slice(0, 80).map((p) => (
+          <li key={p.id}>
+            <ListRow
+              title={p.name}
+              sub={[p.position, p.teamCode, fmtSalary(p.salary)].filter(Boolean).join(' · ')}
+              end={
+                state.myTeamId ? (
+                  <Button
+                    variant={adds.includes(p.id) ? 'primary' : 'quiet'}
+                    onClick={() => toggleAdd(p.id)}
+                  >
+                    {adds.includes(p.id) ? `#${adds.indexOf(p.id) + 1}` : 'Add'}
+                  </Button>
+                ) : undefined
+              }
+            />
+          </li>
+        ))}
+      </ul>
+
+      {state.myTeamId ? (
+        <>
+          <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-2">
+            Your roster — pick the drop
+          </h2>
+          <ul className="flex flex-col gap-1.5 mb-6">
+            {state.myRoster.map((p) => (
+              <li key={p.id}>
+                <ListRow
+                  mine={drop === p.id}
+                  title={p.name}
+                  sub={[p.position, p.teamCode, fmtSalary(p.salary)].filter(Boolean).join(' · ')}
+                  end={
+                    <Button
+                      variant={drop === p.id ? 'danger' : 'quiet'}
+                      onClick={() => setDrop(drop === p.id ? null : p.id)}
+                    >
+                      {drop === p.id ? 'Dropping' : 'Drop'}
+                    </Button>
+                  }
+                />
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      {state.log.length ? (
+        <>
+          <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-2">
+            Transaction log
+          </h2>
+          <ul className="flex flex-col gap-1 text-sm">
+            {state.log.map((l, i) => (
+              <li key={i} className="rounded bg-mns-card border border-[var(--color-border)] px-3 py-2">
+                <b>{l.teamName}</b>{' '}
+                {l.status === 'granted' ? (
+                  <>
+                    added <b className="text-[var(--color-accent)]">{l.granted}</b>, dropped {l.dropped}
+                  </>
+                ) : (
+                  <span className="text-[var(--color-muted-foreground)]">claim failed — {l.reason}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
     </div>
   )
 }

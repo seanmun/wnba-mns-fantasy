@@ -455,6 +455,43 @@ export const mnsMatchups = wnbaSchema.table(
   ]
 )
 
+// One waiver claim: one transaction per team per clearing day (the
+// unique key is what enforces it — resubmitting REPLACES the claim).
+// add_player_ids is an ORDERED preference list: the cap is on
+// transactions granted, not names listed, so being sniped costs the
+// team that player, not their whole move. Claims submitted today clear
+// at the first tick after 8am Eastern tomorrow, best record first
+// (the platform's waiver law, set in golf: priority rewards the top,
+// not the bottom).
+export const mnsWaiverClaims = wnbaSchema.table(
+  'waiver_claims',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    leagueId: text('league_id')
+      .notNull()
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
+    // Eastern date (YYYY-MM-DD) this claim clears on.
+    clearsOn: text('clears_on').notNull(),
+    addPlayerIds: text('add_player_ids').array().notNull().default(sql`'{}'::text[]`),
+    dropPlayerId: text('drop_player_id')
+      .notNull()
+      .references(() => mnsPlayers.id),
+    status: text('status').notNull().default('pending'), // pending|granted|failed|withdrawn
+    grantedPlayerId: text('granted_player_id'),
+    failureReason: text('failure_reason'),
+    processedAt: timestamp('processed_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => [
+    unique('mns_waiver_claims_team_day_key').on(t.teamId, t.clearsOn),
+    index('idx_mns_waiver_claims_league_day').on(t.leagueId, t.clearsOn),
+  ]
+)
+
 // One player's real (or simulated) box line for one day. Raw components
 // only — ratio categories (FG%, A/TO) are computed at aggregation time,
 // never stored. Upserts key on (league, player, date) so re-ingesting a

@@ -152,9 +152,12 @@ export async function ingestEspnDay(
 ): Promise<{ written: number; games: number; unmatched: string[] }> {
   const yyyymmdd = date.replace(/-/g, '')
   const board = (await (await fetch(`${ESPN}/scoreboard?dates=${yyyymmdd}`)).json()) as {
-    events?: Array<{ id: string; status: { type: { completed: boolean } } }>
+    events?: Array<{ id: string; status: { type: { state: string; completed: boolean } } }>
   }
-  const events = (board.events ?? []).filter((e) => e.status.type.completed)
+  // In-progress games count too — totals recompute from scratch every
+  // pass, so a partial box tonight is simply replaced by the final one.
+  // That is what makes scoring feel LIVE during games.
+  const events = (board.events ?? []).filter((e) => e.status.type.state !== 'pre')
 
   const pool = (await db
     .select({ id: mnsPlayers.id, name: mnsPlayers.name })

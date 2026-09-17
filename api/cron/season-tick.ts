@@ -5,6 +5,7 @@ import { mnsLeagues } from '../../src/lib/db/schema.js'
 import { logger } from '../_logger.js'
 import { ingestEspnDay, ingestSimDay } from '../../src/lib/season/statSources.js'
 import { easternToday, matchupWeekFor, scoreLeagueWeek } from '../../src/lib/season/score.js'
+import { processWaivers } from '../../src/lib/season/waivers.js'
 import type { LeagueConfig } from '../../src/types/leagueConfig.js'
 
 // The season heartbeat, hourly. For every league in its regular season:
@@ -67,6 +68,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         finalized += r.finalized
       }
 
+      // Waivers clear daily at the first pass at/after 8am ET — the
+      // engine gates itself, so calling every tick is safe.
+      const waivers = await processWaivers(db, league.id, config, now)
+
       if (unmatched.length) {
         logger.error('season-tick: unmatched ESPN names', {
           leagueId: league.id,
@@ -79,6 +84,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         linesWritten: written,
         matchupsScored: scored,
         finalized,
+        waiversGranted: waivers.granted,
+        waiversFailed: waivers.failed,
         unmatched: [...new Set(unmatched)].length,
       })
     } catch (err) {
