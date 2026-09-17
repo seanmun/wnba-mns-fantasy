@@ -156,13 +156,10 @@ export function FreeAgents() {
         </div>
       ) : null}
 
-      {state.myTeamId && (adds.length > 0 || drop) ? (
-        <div className="mb-4 rounded-lg border border-[var(--color-border-interactive)] bg-mns-card p-3 text-sm flex flex-col gap-2">
-          <span>
-            <b>Your move:</b>{' '}
-            {adds.length ? `add ${adds.map(nameOf).join(' → ')}` : 'pick who to add'}
-            {' · '}
-            {drop ? `drop ${state.myRoster.find((p) => p.id === drop)?.name}` : 'pick who to drop'}
+      {state.myTeamId && adds.length > 0 ? (
+        <div className="fixed left-0 right-0 bottom-16 z-40 bg-[var(--color-background)] border-t border-[var(--color-border-interactive)] px-4 py-3 flex flex-col gap-2 max-h-[45vh] overflow-y-auto">
+          <span className="text-sm">
+            <b>Adding:</b> {adds.map(nameOf).join(' → ')}
           </span>
           {adds.length > 1 ? (
             <span className="text-xs text-[var(--color-muted-foreground)]">
@@ -170,15 +167,37 @@ export function FreeAgents() {
               {adds.map((id, i) => (
                 <span key={id} className="inline-flex items-center gap-0.5 mr-2">
                   {i + 1}.{nameOf(id)}
-                  <button onClick={() => move(i, -1)} aria-label="Earlier">↑</button>
-                  <button onClick={() => move(i, 1)} aria-label="Later">↓</button>
+                  <button onClick={() => move(i, -1)} aria-label="Earlier" className="px-1 min-h-[2rem]">↑</button>
+                  <button onClick={() => move(i, 1)} aria-label="Later" className="px-1 min-h-[2rem]">↓</button>
                 </span>
               ))}
             </span>
           ) : null}
-          <Button onClick={submit} disabled={busy || !drop || adds.length === 0}>
-            {busy ? 'Working…' : open ? 'Add now' : 'Submit claim'}
-          </Button>
+          <span className="text-sm font-bold">{drop ? 'Dropping:' : 'Now pick who to drop:'}</span>
+          <div className="flex flex-wrap gap-1.5">
+            {state.myRoster.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setDrop(drop === p.id ? null : p.id)}
+                className={
+                  'text-sm rounded-full px-3 py-1.5 border min-h-[2.75rem] ' +
+                  (drop === p.id
+                    ? 'border-[var(--color-pick-loss,#ff453a)] text-[var(--color-pick-loss,#ff453a)] font-bold'
+                    : 'border-[var(--color-border)] text-[var(--color-muted-foreground)]')
+                }
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Button className="flex-1" onClick={submit} disabled={busy || !drop}>
+              {busy ? 'Working…' : open ? 'Add now' : 'Submit claim'}
+            </Button>
+            <Button variant="quiet" onClick={() => { setAdds([]); setDrop(null) }}>
+              Cancel
+            </Button>
+          </div>
         </div>
       ) : null}
 
