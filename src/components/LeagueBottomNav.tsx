@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom'
-import { House, Users, Swords, Trophy } from 'lucide-react'
+import { House, Users, Swords, UserPlus } from 'lucide-react'
 import { BottomTabBar } from '../ui/components'
 
 // The constitution's one nav model: Home · My Team · Matchup ·
@@ -13,7 +13,9 @@ export function LeagueBottomNav() {
       basePath={`/league/${leagueId}`}
       playLabel="My Team"
       playPath="my-team"
-      icons={{ home: <House />, play: <Users />, standings: <Trophy /> }}
+      standingsLabel="Players"
+      standingsPath="free-agents"
+      icons={{ home: <House />, play: <Users />, standings: <UserPlus /> }}
       extraTab={{ path: 'matchup', label: 'Matchup', icon: <Swords /> }}
     />
   )

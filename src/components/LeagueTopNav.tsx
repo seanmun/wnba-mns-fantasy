@@ -31,9 +31,6 @@ export function LeagueTopNav() {
           ) : null}
         </div>
         <div className="flex items-center gap-4 text-[var(--color-muted-foreground)]">
-          <Link to={`${base}/free-agents`} className="hover:text-[var(--color-foreground)] transition-colors">
-            Free agents
-          </Link>
           <Link to={`${base}/trade-machine`} className="hover:text-[var(--color-foreground)] transition-colors">
             Trades
           </Link>
