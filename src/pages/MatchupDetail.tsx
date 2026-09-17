@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
 import { useApi } from '../hooks/useApi'
-import { EmptyState, PageHeader, Skeleton } from '../ui/components'
+import { Tv } from 'lucide-react'
+import { Button, EmptyState, PageHeader, Skeleton } from '../ui/components'
 
 interface WeekTotals {
   pts: number
@@ -197,7 +198,13 @@ export function MatchupDetail() {
           </span>
         }
         status={`Category score · ${matchup.startDate} to ${matchup.endDate}`}
-      />
+      >
+        <div className="mt-2">
+          <Button variant="quiet" to={`/league/${leagueId}/scores`}>
+            <Tv aria-hidden className="mr-1.5" /> Games
+          </Button>
+        </div>
+      </PageHeader>
 
       {cats.length > 0 && (
         <div className="mb-6 rounded-lg border border-[var(--color-border)] bg-mns-card overflow-hidden">

@@ -147,9 +147,10 @@ function pair(v: string): [number, number] {
 
 // The pool's team codes came from the legacy mns port; ESPN spells a
 // few differently. ESPN's spelling -> ours.
-const CODE_ALIAS: Record<string, string> = {
+export const CODE_ALIAS: Record<string, string> = {
   WSH: 'WAS', LA: 'LAS', PHX: 'PHO', LV: 'LVA', NY: 'NYL', GS: 'GSV',
 }
+export const ESPN_SCOREBOARD = `${'https://site.api.espn.com/apis/site/v2/sports/basketball/wnba'}/scoreboard`
 
 export interface DayGame {
   opp: string
