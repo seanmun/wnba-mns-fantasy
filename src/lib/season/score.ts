@@ -75,14 +75,22 @@ export async function scoreLeagueWeek(
     .where(and(eq(mnsMatchups.leagueId, leagueId), eq(mnsMatchups.matchupWeek, matchupWeek)))
   if (matchups.length === 0) return { scored: 0, finalized: 0 }
 
-  // Whole-roster totals per team across the week's date range.
+  // ACTIVE players only — bench and IR are real decisions with real
+  // cost: their lines exist but never count. The current slot owns the
+  // week, same rule as the current roster owning the week.
   const teamIds = [
     ...new Set(matchups.flatMap((m: { homeTeamId: string; awayTeamId: string }) => [m.homeTeamId, m.awayTeamId])),
   ] as string[]
   const rostered = await db
     .select({ id: mnsPlayers.id, teamId: mnsPlayers.teamId })
     .from(mnsPlayers)
-    .where(and(eq(mnsPlayers.leagueId, leagueId), inArray(mnsPlayers.teamId, teamIds)))
+    .where(
+      and(
+        eq(mnsPlayers.leagueId, leagueId),
+        inArray(mnsPlayers.teamId, teamIds),
+        eq(mnsPlayers.slot, 'active')
+      )
+    )
   const teamByPlayer = new Map(
     rostered.map((p: { id: string; teamId: string }) => [p.id, p.teamId])
   )
