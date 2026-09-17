@@ -525,13 +525,19 @@ function NumRow({
   onChange: (v: number | string) => void
   asText?: boolean
 }) {
+  // Money-sized numbers render with commas — 1,500,000 and 15,000,000
+  // must be tellable apart at a glance. Typed commas (or anything
+  // non-numeric) are stripped before parsing, so paste works too.
   return (
     <Row label={label}>
       <input
-        type={asText ? 'text' : 'number'}
-        value={value}
+        type="text"
+        inputMode={asText ? undefined : 'numeric'}
+        value={
+          asText ? value : typeof value === 'number' ? value.toLocaleString('en-US') : value
+        }
         onChange={(e) =>
-          onChange(asText ? e.target.value : Number(e.target.value))
+          onChange(asText ? e.target.value : Number(e.target.value.replace(/[^0-9.-]/g, '')) || 0)
         }
         className={inputClass}
       />
