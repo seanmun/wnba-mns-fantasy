@@ -58,6 +58,7 @@ export function FreeAgents() {
   const [error, setError] = useState<string | null>(null)
   const [adds, setAdds] = useState<string[]>([])
   const [sortBy, setSortBy] = useState<'ppg' | 'rpg' | 'apg' | 'salary'>('ppg')
+  const [search, setSearch] = useState('')
   const [drop, setDrop] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -246,8 +247,23 @@ export function FreeAgents() {
           ))}
         </div>
       </div>
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search players…"
+        className="w-full mb-3 px-4 py-2.5 min-h-[3rem] rounded-lg bg-mns-card border border-[var(--color-border-interactive)] text-[var(--color-foreground)] placeholder:text-[var(--color-muted-foreground)] focus:outline-none focus:border-[var(--color-accent)]"
+      />
       <ul className="flex flex-col gap-1.5 mb-6">
         {[...state.freeAgents]
+          .filter((p) => {
+            const q = search.trim().toLowerCase()
+            if (!q) return true
+            return (
+              p.name.toLowerCase().includes(q) ||
+              (p.teamCode ?? '').toLowerCase().includes(q) ||
+              (p.position ?? '').toLowerCase().includes(q)
+            )
+          })
           .sort((a, b) =>
             sortBy === 'salary'
               ? (b.salary ?? 0) - (a.salary ?? 0)
