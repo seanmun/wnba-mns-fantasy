@@ -9,6 +9,7 @@ import { logger } from './_logger.js'
 // purpose — scores are the same in every league.
 //
 // GET /api/scores?date=YYYY-MM-DD (defaults to Eastern today)
+// GET /api/scores?event=ID — one game's box score, both teams
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
   const userId = await verifyAuth(req)
@@ -19,6 +20,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) date = today
 
   try {
+    // One game's box, parsed the same way ingest reads it.
+    if (req.query.event) {
+      const eventId = String(req.query.event).replace(/[^0-9]/g, '')
+      const summary = (await (
+        await fetch(`${ESPN_SCOREBOARD.replace('/scoreboard', '/summary')}?event=${eventId}`)
+      ).json()) as {
+        boxscore?: {
+          players?: Array<{
+            team?: { abbreviation?: string; shortDisplayName?: string }
+            statistics?: Array<{
+              names: string[]
+              athletes: Array<{
+                athlete: { displayName: string; shortName?: string }
+                stats: string[]
+              }>
+            }>
+          }>
+        }
+      }
+      const teams = (summary.boxscore?.players ?? []).map((teamBox) => {
+        const stats = teamBox.statistics?.[0]
+        const col = (n: string) => stats?.names.indexOf(n) ?? -1
+        const at = (row: string[], i: number) => (i >= 0 ? row[i] ?? '0' : '0')
+        const idx = {
+          min: col('MIN'), pts: col('PTS'), reb: col('REB'), ast: col('AST'),
+          fg: col('FG'), stl: col('STL'), blk: col('BLK'), to: col('TO'),
+        }
+        const abbr = teamBox.team?.abbreviation ?? ''
+        return {
+          code: CODE_ALIAS[abbr] ?? abbr,
+          name: teamBox.team?.shortDisplayName ?? '',
+          players: (stats?.athletes ?? [])
+            .filter((a) => a.stats && a.stats.length > 0)
+            .map((a) => ({
+              name: a.athlete.shortName ?? a.athlete.displayName,
+              min: at(a.stats, idx.min),
+              pts: at(a.stats, idx.pts),
+              reb: at(a.stats, idx.reb),
+              ast: at(a.stats, idx.ast),
+              fg: at(a.stats, idx.fg),
+              stl: at(a.stats, idx.stl),
+              blk: at(a.stats, idx.blk),
+              to: at(a.stats, idx.to),
+            })),
+        }
+      })
+      return res.status(200).json({ id: eventId, teams })
+    }
+
     const board = (await (
       await fetch(`${ESPN_SCOREBOARD}?dates=${date.replace(/-/g, '')}`)
     ).json()) as {
