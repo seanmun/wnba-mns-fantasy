@@ -25,6 +25,8 @@ interface MatchupPayload {
     id: string
     matchupWeek: number
     status: string
+    homeTeamId: string
+    awayTeamId: string
     homeTeamName: string
     awayTeamName: string
     homeScore: number
@@ -52,6 +54,7 @@ export function MatchupDetail() {
   const { user } = useUser()
   const { apiFetch } = useApi()
   const [data, setData] = useState<MatchupPayload | null>(null)
+  const [myTeamId, setMyTeamId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -59,19 +62,19 @@ export function MatchupDetail() {
     const load = async () => {
       try {
         let id = matchupId
+        // Teams are always fetched: the page orients itself so the
+        // VIEWER'S team sits on the left, whoever they are.
+        const teams = await apiFetch<Array<{ id: string; owners: Array<{ userId: string | null }> }>>(
+          `/api/leagues/${leagueId}/teams`
+        )
+        const myTeam = teams.find((t) => t.owners.some((o) => o.userId === user?.id))
+        if (!cancelled) setMyTeamId(myTeam?.id ?? null)
         // The Matchup tab arrives with no id: resolve to MY current
-        // matchup (any member's first matchup if the caller owns no
-        // team — a viewer still gets the week).
+        // matchup (the week's first if the caller owns no team).
         if (!id) {
-          const [teams, week] = await Promise.all([
-            apiFetch<Array<{ id: string; owners: Array<{ userId: string | null }> }>>(
-              `/api/leagues/${leagueId}/teams`
-            ),
-            apiFetch<{ matchups: Array<{ id: string; homeTeamId: string; awayTeamId: string }> }>(
-              `/api/leagues/${leagueId}/matchups`
-            ),
-          ])
-          const myTeam = teams.find((t) => t.owners.some((o) => o.userId === user?.id))
+          const week = await apiFetch<{ matchups: Array<{ id: string; homeTeamId: string; awayTeamId: string }> }>(
+            `/api/leagues/${leagueId}/matchups`
+          )
           const mineOrFirst =
             week.matchups.find(
               (m) => myTeam && (m.homeTeamId === myTeam.id || m.awayTeamId === myTeam.id)
@@ -109,6 +112,16 @@ export function MatchupDetail() {
   const { matchup, home, away } = data
   const cats = matchup.result?.categories ?? []
 
+  // The viewer's team owns the LEFT column; a neutral viewer gets
+  // away-at-home reading order.
+  const meIsHome = myTeamId === matchup.homeTeamId
+  const left = meIsHome
+    ? { name: matchup.homeTeamName, score: matchup.homeScore, vals: matchup.result?.home, side: home }
+    : { name: matchup.awayTeamName, score: matchup.awayScore, vals: matchup.result?.away, side: away }
+  const right = meIsHome
+    ? { name: matchup.awayTeamName, score: matchup.awayScore, vals: matchup.result?.away, side: away }
+    : { name: matchup.homeTeamName, score: matchup.homeScore, vals: matchup.result?.home, side: home }
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-2 pb-24">
       <PageHeader
@@ -117,50 +130,43 @@ export function MatchupDetail() {
         eyebrow={`Week ${matchup.matchupWeek} · ${matchup.status === 'final' ? 'Final' : matchup.status === 'live' ? 'Live' : 'Scheduled'}`}
         title={
           <span className="tabular-nums">
-            {matchup.awayTeamName} {matchup.awayScore} — {matchup.homeScore} {matchup.homeTeamName}
+            {left.name} {left.score} — {right.score} {right.name}
           </span>
         }
         status={`Category score · ${matchup.startDate} to ${matchup.endDate}`}
       />
 
       {cats.length > 0 && (
-        <div className="overflow-x-auto mb-6">
-          <table className="w-full text-sm tabular-nums">
-            <thead>
-              <tr className="text-[var(--color-muted-foreground)] text-xs uppercase tracking-wider">
-                <th className="text-left py-2">Cat</th>
-                <th className="text-right py-2">{matchup.awayTeamName}</th>
-                <th className="text-right py-2">{matchup.homeTeamName}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cats.map((c) => {
-                const h = matchup.result?.home?.[c]
-                const a = matchup.result?.away?.[c]
-                const homeWins = (h ?? 0) > (a ?? 0)
-                const awayWins = (a ?? 0) > (h ?? 0)
-                return (
-                  <tr key={c} className="border-t border-[var(--color-border)]">
-                    <td className="py-1.5 font-semibold">{c}</td>
-                    <td className={'text-right py-1.5 ' + (awayWins ? 'text-[var(--color-accent)] font-bold' : '')}>
-                      {fmtCat(c, a)}
-                    </td>
-                    <td className={'text-right py-1.5 ' + (homeWins ? 'text-[var(--color-accent)] font-bold' : '')}>
-                      {fmtCat(c, h)}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+        <div className="mb-6 rounded-lg border border-[var(--color-border)] bg-mns-card overflow-hidden">
+          <div className="grid grid-cols-[1fr_auto_1fr] text-xs uppercase tracking-wider text-[var(--color-muted-foreground)] px-4 py-2 border-b border-[var(--color-border)]">
+            <span className="truncate">
+              {left.name}
+              {myTeamId === matchup.homeTeamId || myTeamId === matchup.awayTeamId ? ' (you)' : ''}
+            </span>
+            <span className="px-3 text-center">Cat</span>
+            <span className="truncate text-right">{right.name}</span>
+          </div>
+          {cats.map((c) => {
+            const lv = left.vals?.[c]
+            const rv = right.vals?.[c]
+            const lWins = (lv ?? 0) > (rv ?? 0)
+            const rWins = (rv ?? 0) > (lv ?? 0)
+            return (
+              <div key={c} className="grid grid-cols-[1fr_auto_1fr] items-center px-4 py-1.5 border-b border-[var(--color-border)] last:border-b-0 tabular-nums text-sm">
+                <span className={lWins ? 'text-[var(--color-accent)] font-bold' : ''}>{fmtCat(c, lv)}</span>
+                <span className="px-3 text-center text-xs font-semibold text-[var(--color-muted-foreground)]">{c}</span>
+                <span className={'text-right ' + (rWins ? 'text-[var(--color-accent)] font-bold' : '')}>{fmtCat(c, rv)}</span>
+              </div>
+            )
+          })}
         </div>
       )}
 
       <div className="grid sm:grid-cols-2 gap-6">
         {(
           [
-            [matchup.awayTeamName, away],
-            [matchup.homeTeamName, home],
+            [left.name, left.side],
+            [right.name, right.side],
           ] as const
         ).map(([label, side]) => (
           <section key={label}>
