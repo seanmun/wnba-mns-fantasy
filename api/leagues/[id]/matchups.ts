@@ -10,11 +10,15 @@ import {
   mnsTeams,
 } from '../../../src/lib/db/schema.js'
 import { easternToday } from '../../../src/lib/season/score.js'
+import { lineupResolver } from '../../../src/lib/season/lineups.js'
+import { dayGames } from '../../../src/lib/season/statSources.js'
 import { logger } from '../../_logger.js'
 
 // GET /api/leagues/:id/matchups?week=N     — the week's matchups
-// GET /api/leagues/:id/matchups?matchupId= — one matchup with rosters
-//     and per-player week lines (the MatchupDetail payload)
+// GET /api/leagues/:id/matchups?matchupId=&date= — one matchup with
+//     rosters, per-player week lines, and the chosen DAY: both sides'
+//     slots as set for that date, who plays, and that day's box lines.
+//     date defaults to today, clamped into the matchup week.
 // Omitting week returns the CURRENT week (today inside its dates),
 // falling back to the last week of the season once it's over.
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -78,6 +82,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (l.min > 0) t.games++
         byPlayer.set(l.playerId, t)
       }
+      // The day view: which date of the week, clamped inside it.
+      const today = easternToday()
+      let date = String(req.query.date ?? today)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) date = today
+      if (date < startDate) date = startDate
+      if (date > endDate) date = endDate
+      const resolve = await lineupResolver(db, leagueId, date)
+      const daySlots: Record<string, string> = {}
+      for (const p of roster) {
+        daySlots[p.id] = resolve(p.teamId as string, p.id, date, p.slot)
+      }
+      const games = await dayGames(date)
+      const dayLines: Record<string, { min: number; pts: number; reb: number; ast: number; stl: number; blk: number; fgm: number; fga: number }> = {}
+      for (const l of lines) {
+        if (l.date !== date) continue
+        dayLines[l.playerId] = { min: l.min, pts: l.pts, reb: l.reb, ast: l.ast, stl: l.stl, blk: l.blk, fgm: l.fgm, fga: l.fga }
+      }
+
       const side = (teamId: string) =>
         roster
           .filter((p) => p.teamId === teamId)
@@ -107,6 +129,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
         home: side(m.homeTeamId),
         away: side(m.awayTeamId),
+        day: {
+          date,
+          today,
+          games: Object.fromEntries(games),
+          slots: daySlots,
+          lines: dayLines,
+        },
       })
     }
 

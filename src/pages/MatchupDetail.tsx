@@ -20,6 +20,22 @@ interface SidePlayer {
   teamCode: string | null
   week: WeekTotals | null
 }
+interface DayGame {
+  opp: string
+  home: boolean
+  tip: string
+  state: 'pre' | 'in' | 'post'
+}
+interface DayLine {
+  min: number
+  pts: number
+  reb: number
+  ast: number
+  stl: number
+  blk: number
+  fgm: number
+  fga: number
+}
 interface MatchupPayload {
   matchup: {
     id: string
@@ -41,10 +57,29 @@ interface MatchupPayload {
   }
   home: SidePlayer[]
   away: SidePlayer[]
+  day: {
+    date: string
+    today: string
+    games: Record<string, DayGame>
+    slots: Record<string, string>
+    lines: Record<string, DayLine>
+  }
 }
 
 const fmtCat = (cat: string, v: number | undefined) =>
   v == null ? '—' : cat.includes('%') ? (v * 100).toFixed(1) : cat === 'A/TO' ? v.toFixed(2) : String(Math.round(v))
+
+const shiftDate = (date: string, days: number) =>
+  new Date(new Date(`${date}T12:00:00Z`).getTime() + days * 86400000).toISOString().slice(0, 10)
+const datesBetween = (start: string, end: string) => {
+  const out: string[] = []
+  for (let d = start; d <= end && out.length < 14; d = shiftDate(d, 1)) out.push(d)
+  return out
+}
+const fmtChip = (date: string) =>
+  new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', timeZone: 'UTC' })
+const fmtTip = (iso: string) =>
+  new Date(iso).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })
 
 // One matchup: who's winning which categories, and the week each
 // player actually had. Category math mirrors the scorer exactly —
@@ -56,6 +91,7 @@ export function MatchupDetail() {
   const [data, setData] = useState<MatchupPayload | null>(null)
   const [myTeamId, setMyTeamId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [selDate, setSelDate] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -86,7 +122,7 @@ export function MatchupDetail() {
           id = mineOrFirst.id
         }
         const d = await apiFetch<MatchupPayload>(
-          `/api/leagues/${leagueId}/matchups?matchupId=${id}`
+          `/api/leagues/${leagueId}/matchups?matchupId=${id}${selDate ? `&date=${selDate}` : ''}`
         )
         if (!cancelled) setData(d)
       } catch (e) {
@@ -97,7 +133,7 @@ export function MatchupDetail() {
     return () => {
       cancelled = true
     }
-  }, [apiFetch, leagueId, matchupId, user?.id])
+  }, [apiFetch, leagueId, matchupId, user?.id, selDate])
 
   if (error) return <EmptyState title="Something went wrong">{error}</EmptyState>
   if (!data) {
@@ -109,8 +145,30 @@ export function MatchupDetail() {
     )
   }
 
-  const { matchup, home, away } = data
+  const { matchup, home, away, day } = data
   const cats = matchup.result?.categories ?? []
+  const weekDays = datesBetween(matchup.startDate, matchup.endDate)
+
+  // One player's chosen day: their game (or not), and the line once
+  // it exists — the same language as My Team.
+  const dayNote = (p: SidePlayer) => {
+    const g = p.teamCode ? day.games[p.teamCode] : undefined
+    const line = day.lines[p.id]
+    if (line && (line.min > 0 || g?.state !== 'pre')) {
+      return (
+        <span className="text-[var(--color-accent)]">
+          {line.pts}p {line.reb}r {line.ast}a · {line.min} min
+        </span>
+      )
+    }
+    if (!g) return <span className="text-[var(--color-muted-foreground)]">no game</span>
+    return (
+      <span>
+        {g.home ? 'vs' : '@'} {g.opp}
+        {g.state === 'pre' ? ` · ${fmtTip(g.tip)}` : g.state === 'in' ? ' · live' : ' · final'}
+      </span>
+    )
+  }
 
   // The viewer's team owns the LEFT column; a neutral viewer gets
   // away-at-home reading order.
@@ -162,6 +220,26 @@ export function MatchupDetail() {
         </div>
       )}
 
+      {/* The week, one day at a time — who suits up on each date. */}
+      <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1">
+        {weekDays.map((d) => (
+          <button
+            key={d}
+            onClick={() => setSelDate(d)}
+            aria-pressed={d === day.date}
+            className={
+              'shrink-0 rounded-lg px-3 py-1.5 min-h-[2.75rem] border text-sm tabular-nums ' +
+              (d === day.date
+                ? 'border-[var(--color-accent)] text-[var(--color-accent)] font-bold'
+                : 'border-[var(--color-border)] text-[var(--color-muted-foreground)]') +
+              (d === day.today ? ' underline underline-offset-4' : '')
+            }
+          >
+            {fmtChip(d)}
+          </button>
+        ))}
+      </div>
+
       <div className="grid sm:grid-cols-2 gap-6">
         {(
           [
@@ -174,24 +252,36 @@ export function MatchupDetail() {
               {label}
             </h2>
             <ul className="flex flex-col gap-1.5">
-              {side.map((p) => (
-                <li
-                  key={p.id}
-                  className="rounded-lg border border-[var(--color-border)] bg-mns-card px-3 py-2"
-                >
-                  <span className="block font-semibold text-sm">
-                    {p.name}
-                    <span className="ml-1.5 text-xs text-[var(--color-muted-foreground)]">
-                      {[p.position, p.teamCode].filter(Boolean).join(' · ')}
+              {side.map((p) => {
+                const slot = day.slots[p.id] ?? 'active'
+                return (
+                  <li
+                    key={p.id}
+                    className={
+                      'rounded-lg border border-[var(--color-border)] bg-mns-card px-3 py-2' +
+                      (slot !== 'active' ? ' opacity-60' : '')
+                    }
+                  >
+                    <span className="block font-semibold text-sm">
+                      {p.name}
+                      <span className="ml-1.5 text-xs text-[var(--color-muted-foreground)]">
+                        {[p.position, p.teamCode].filter(Boolean).join(' · ')}
+                      </span>
+                      {slot !== 'active' ? (
+                        <span className="ml-1.5 text-[0.65rem] uppercase tracking-wider rounded px-1 py-0.5 border border-[var(--color-border)] text-[var(--color-muted-foreground)]">
+                          {slot === 'ir' ? 'IR' : 'Bench'}
+                        </span>
+                      ) : null}
                     </span>
-                  </span>
-                  <span className="block text-xs text-[var(--color-muted-foreground)] tabular-nums">
-                    {p.week
-                      ? `${p.week.games} gm · ${p.week.pts} pts · ${p.week.reb} reb · ${p.week.ast} ast · ${p.week.stl} stl · ${p.week.blk} blk`
-                      : 'no games yet'}
-                  </span>
-                </li>
-              ))}
+                    <span className="block text-xs tabular-nums">{dayNote(p)}</span>
+                    <span className="block text-xs text-[var(--color-muted-foreground)] tabular-nums">
+                      {p.week
+                        ? `week: ${p.week.games} gm · ${p.week.pts} pts · ${p.week.reb} reb · ${p.week.ast} ast · ${p.week.stl} stl · ${p.week.blk} blk`
+                        : 'no games yet'}
+                    </span>
+                  </li>
+                )
+              })}
             </ul>
           </section>
         ))}
