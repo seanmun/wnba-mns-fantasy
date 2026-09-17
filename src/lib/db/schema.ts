@@ -455,6 +455,26 @@ export const mnsMatchups = wnbaSchema.table(
   ]
 )
 
+// Every roster move the league ever makes, in one place with a clock
+// on it: instant pickups, waiver grants, executed trades. The
+// transactions page reads THIS; the source tables stay authoritative
+// for their own mechanics.
+export const mnsTransactions = wnbaSchema.table(
+  'transactions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    leagueId: text('league_id')
+      .notNull()
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(), // 'add_drop' | 'waiver' | 'trade'
+    teamIds: text('team_ids').array().notNull().default(sql`'{}'::text[]`),
+    // Human-readable pieces: { added, dropped, teamName, assets, ... }
+    detail: jsonb('detail').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => [index('idx_mns_transactions_league_time').on(t.leagueId, t.createdAt)]
+)
+
 // One waiver claim: one transaction per team per clearing day (the
 // unique key is what enforces it — resubmitting REPLACES the claim).
 // add_player_ids is an ORDERED preference list: the cap is on

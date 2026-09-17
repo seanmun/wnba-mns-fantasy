@@ -45,6 +45,7 @@ const MatchupDetail = lazy(() => import('./pages/MatchupDetail').then((m) => ({ 
 const Rules = lazy(() => import('./pages/Rules').then((m) => ({ default: m.Rules })))
 const RecordBook = lazy(() => import('./pages/RecordBook').then((m) => ({ default: m.RecordBook })))
 const Standings = lazy(() => import('./pages/Standings').then((m) => ({ default: m.Standings })))
+const Transactions = lazy(() => import('./pages/Transactions').then((m) => ({ default: m.Transactions })))
 
 // League manager
 const LeagueManagerHub = lazy(() => import('./pages/LeagueManagerHub').then((m) => ({ default: m.LeagueManagerHub })))
@@ -161,6 +162,7 @@ export function App() {
             <Route path="/league/:leagueId/team/:teamId" element={<ProtectedRoute><LeagueLayout><OwnerDashboard /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/my-team" element={<ProtectedRoute><LeagueLayout><OwnerDashboard /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/standings" element={<ProtectedRoute><LeagueLayout><Standings /></LeagueLayout></ProtectedRoute>} />
+            <Route path="/league/:leagueId/transactions" element={<ProtectedRoute><LeagueLayout><Transactions /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/draft" element={<ProtectedRoute><LeagueLayout><Draft /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/free-agents" element={<ProtectedRoute><LeagueLayout><FreeAgents /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/record-book" element={<ProtectedRoute><LeagueLayout><RecordBook /></LeagueLayout></ProtectedRoute>} />

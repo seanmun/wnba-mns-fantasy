@@ -9,7 +9,13 @@ import {
   mnsTeams,
   mnsWaiverClaims,
 } from '../../../src/lib/db/schema.js'
-import { nextClearDate, waiverLog, waiverPriority } from '../../../src/lib/season/waivers.js'
+import {
+  faWindow,
+  logTransaction,
+  nextClearDate,
+  waiverLog,
+  waiverPriority,
+} from '../../../src/lib/season/waivers.js'
 import { logger } from '../../_logger.js'
 
 // The waiver wire. Claims submitted today clear tomorrow at 8am ET,
@@ -49,6 +55,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const teamName = new Map(teams.map((t) => [t.id, t.name]))
       const playerName = new Map(players.map((p) => [p.id, p.name]))
 
+      const window = await faWindow()
       const order = await waiverPriority(db, leagueId)
       const myClaim = mine
         ? (
@@ -67,6 +74,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       return res.status(200).json({
         myTeamId: mine?.teamId ?? null,
+        // 'open' = instant add/drop until today's first tip; 'waivers'
+        // = claims queue for tomorrow morning's clear.
+        window: window.mode,
+        firstTip: window.firstTip,
         clearsOn: nextClearDate(),
         priority: order.map((id, i) => ({ position: i + 1, teamId: id, teamName: teamName.get(id) ?? id, isMe: mine?.teamId === id })),
         myRoster: players
@@ -117,6 +128,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const notFree = addPlayerIds.filter((id) => byId.get(id)?.teamId != null || !byId.has(id))
       if (notFree.length) {
         return res.status(400).json({ error: 'Someone on your add list is already rostered.' })
+      }
+
+      // Before the day's first tip, free agency is OPEN: the move
+      // executes right now, first tap wins, no priority cost.
+      const window = await faWindow()
+      if (window.mode === 'open') {
+        const addId = addPlayerIds[0]
+        const league2 = league.config as import('../../../src/types/leagueConfig.js').LeagueConfig
+        if (league2.cap?.enabled) {
+          const rows = await db
+            .select({ teamId: mnsPlayers.teamId, salary: mnsPlayers.salary, id: mnsPlayers.id })
+            .from(mnsPlayers)
+            .where(eq(mnsPlayers.leagueId, leagueId))
+          const rosterSalary = rows
+            .filter((p) => p.teamId === mine.teamId)
+            .reduce((n, p) => n + (p.salary ?? 0), 0)
+          const addSal = rows.find((p) => p.id === addId)?.salary ?? 0
+          const dropSal = rows.find((p) => p.id === dropPlayerId)?.salary ?? 0
+          if (rosterSalary - dropSal + addSal > league2.cap.hardCap) {
+            return res.status(400).json({ error: 'That pickup would put you over the hard cap.' })
+          }
+        }
+        // Two updates guarded by current state — if someone else took
+        // the player a second ago, the first update writes zero rows
+        // and the move honestly fails.
+        const took = await db
+          .update(mnsPlayers)
+          .set({ teamId: mine.teamId, slot: 'active' })
+          .where(
+            and(
+              eq(mnsPlayers.leagueId, leagueId),
+              eq(mnsPlayers.id, addId),
+              sql`${mnsPlayers.teamId} is null`
+            )
+          )
+          .returning({ id: mnsPlayers.id, name: mnsPlayers.name })
+        if (took.length === 0) {
+          return res.status(409).json({ error: 'Somebody beat you to that player — refresh and pick again.' })
+        }
+        const [droppedRow] = await db
+          .update(mnsPlayers)
+          .set({ teamId: null, slot: 'active' })
+          .where(and(eq(mnsPlayers.leagueId, leagueId), eq(mnsPlayers.id, dropPlayerId)))
+          .returning({ name: mnsPlayers.name })
+        await logTransaction(db, leagueId, 'add_drop', [mine.teamId], {
+          added: took[0].name,
+          dropped: droppedRow?.name ?? dropPlayerId,
+        })
+        return res.status(200).json({ ok: true, instant: true, added: took[0].name })
       }
 
       const clearsOn = nextClearDate()

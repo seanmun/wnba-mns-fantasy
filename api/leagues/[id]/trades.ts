@@ -11,6 +11,7 @@ import {
   mnsTradeProposalResponses,
 } from '../../../src/lib/db/schema.js'
 import { isTradeDeadlinePassed } from '../../../src/rules/tradeRules.js'
+import { logTransaction } from '../../../src/lib/season/waivers.js'
 import { logger } from '../../_logger.js'
 import type { TradeAsset } from '../../../src/types/trade.js'
 import type { LeagueConfig } from '../../../src/types/leagueConfig.js'
@@ -240,6 +241,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .update(mnsTradeProposals)
         .set({ status: 'executed', updatedAt: new Date() })
         .where(eq(mnsTradeProposals.id, proposalId))
+      await logTransaction(db, leagueId, 'trade', involved, {
+        assets: assets.map((a) => ({ name: a.displayName, fromTeamId: a.fromTeamId, toTeamId: a.toTeamId })),
+      })
       await db
         .update(mnsTradeProposalResponses)
         .set({ status: 'accepted', respondedBy: userId, respondedAt: new Date(), updatedAt: new Date() })

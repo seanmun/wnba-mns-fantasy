@@ -13,6 +13,8 @@ interface WirePlayer {
 }
 interface WireState {
   myTeamId: string | null
+  window: 'open' | 'waivers'
+  firstTip: string | null
   clearsOn: string
   priority: Array<{ position: number; teamName: string; isMe: boolean }>
   myRoster: WirePlayer[]
@@ -29,9 +31,11 @@ interface WireState {
 
 const fmtSalary = (n: number | null) => (n != null ? `$${(n / 1000).toFixed(0)}k` : '')
 
-// The waiver wire: build an ordered wish list, name the drop, submit.
-// Claims clear tomorrow morning, best record first — one transaction
-// per team per day, resubmitting replaces.
+// Free agency, two gears set by the day's real schedule: OPEN until
+// the first tipoff (pick one, name the drop, it's instant), then
+// waivers — ordered wish list, clears tomorrow morning, longest-since-
+// last-granted-move first. One claim per team per day; resubmitting
+// replaces.
 export function FreeAgents() {
   const { leagueId = '' } = useParams()
   const { apiFetch } = useApi()
@@ -60,8 +64,13 @@ export function FreeAgents() {
     )
   }
 
+  const open = state.window === 'open'
+  // Open window: one player at a time, the move is instant. Waivers:
+  // build the ordered wish list.
   const toggleAdd = (id: string) =>
-    setAdds((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]))
+    setAdds((a) =>
+      a.includes(id) ? a.filter((x) => x !== id) : open ? [id] : [...a, id]
+    )
   const move = (i: number, d: number) =>
     setAdds((a) => {
       const t = i + d
@@ -79,7 +88,7 @@ export function FreeAgents() {
         method: 'POST',
         body: JSON.stringify({ addPlayerIds: adds, dropPlayerId: drop }),
       })
-      toast.success('Claim in — clears tomorrow morning')
+      toast.success(open ? 'Done — they\'re yours' : 'Claim in — clears tomorrow morning')
       setAdds([])
       setDrop(null)
       refresh()
@@ -111,7 +120,11 @@ export function FreeAgents() {
         back={`/league/${leagueId}`}
         backLabel="League home"
         title="Free agents"
-        status={`Claims clear tomorrow at 8am ET, best record first. One move a day; resubmitting replaces.`}
+        status={
+          state.window === 'open'
+            ? `Free agency is OPEN — moves are instant until first tip${state.firstTip ? ` (${new Date(state.firstTip).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} ET)` : ''}.`
+            : 'Games are on — claims queue and clear tomorrow at 8am ET, longest-since-last-move first.'
+        }
       />
 
       {/* Waiver order — public, that's the strategy */}
@@ -164,7 +177,7 @@ export function FreeAgents() {
             </span>
           ) : null}
           <Button onClick={submit} disabled={busy || !drop || adds.length === 0}>
-            {busy ? 'Submitting…' : 'Submit claim'}
+            {busy ? 'Working…' : open ? 'Add now' : 'Submit claim'}
           </Button>
         </div>
       ) : null}

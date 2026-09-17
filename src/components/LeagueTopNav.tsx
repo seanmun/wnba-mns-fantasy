@@ -37,6 +37,9 @@ export function LeagueTopNav() {
           <Link to={`${base}/trade-machine`} className="hover:text-[var(--color-foreground)] transition-colors">
             Trades
           </Link>
+          <Link to={`${base}/transactions`} className="hover:text-[var(--color-foreground)] transition-colors">
+            Log
+          </Link>
           {isCommissioner ? (
             <Link
               to={`${base}/lm`}

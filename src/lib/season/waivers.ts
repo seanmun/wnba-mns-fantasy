@@ -1,13 +1,19 @@
 import { and, eq, inArray, lte, sql } from 'drizzle-orm'
-import { mnsPlayers, mnsTeams, mnsWaiverClaims } from '../db/schema.js'
-import { computeStandings, easternToday } from './score.js'
+import { mnsPlayers, mnsTeams, mnsTransactions, mnsWaiverClaims } from '../db/schema.js'
+import { easternToday } from './score.js'
 import type { LeagueConfig } from '../../types/leagueConfig.js'
 
-// The waiver engine, golf's model on a daily cycle: claims submitted
-// today clear at the first tick at/after 8am Eastern TOMORROW, best
-// record first (the platform's waiver law — priority rewards the top).
-// One transaction per team per clearing day; the ordered preference
-// list means being sniped costs that player, not the whole move.
+// Free agency, Sean's spec from the live beta (2026-09-17):
+// - Until the day's FIRST TIPOFF, the pool is open — anyone picks up
+//   anyone instantly, naming the drop in the same move. Instant
+//   pickups cost nothing in priority.
+// - From first tip until early morning, FA moves queue as WAIVER
+//   CLAIMS that clear at the first tick at/after 8am ET next day.
+// - Waiver priority is a rolling line: least recent GRANTED waiver
+//   move first; a grant sends you to the back. Never-claimed teams
+//   head the line (team creation order between them).
+// One claim per team per clearing day; the ordered preference list
+// means being sniped costs that player, not the whole move.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any
@@ -28,22 +34,72 @@ export interface WaiverResult {
   failed: number
 }
 
-// Priority: best record first, category wins as tiebreak, then team
-// creation order so the answer never depends on row order.
+// Priority: a rolling line ordered by each team's most recent GRANTED
+// waiver move — least recent (or never) first, team creation order as
+// the tiebreak. Instant pregame pickups deliberately don't appear
+// here: only waiver grants cost position.
 export async function waiverPriority(db: Db, leagueId: string): Promise<string[]> {
   const teams = await db
     .select()
     .from(mnsTeams)
     .where(eq(mnsTeams.leagueId, leagueId))
     .orderBy(mnsTeams.createdAt)
-  const rec = await computeStandings(db, leagueId)
+  const grants = await db
+    .select({
+      teamId: mnsWaiverClaims.teamId,
+      last: sql<string | null>`max(${mnsWaiverClaims.processedAt})`,
+    })
+    .from(mnsWaiverClaims)
+    .where(and(eq(mnsWaiverClaims.leagueId, leagueId), eq(mnsWaiverClaims.status, 'granted')))
+    .groupBy(mnsWaiverClaims.teamId)
+  const lastByTeam = new Map(
+    grants.map((g: { teamId: string; last: string | null }) => [g.teamId, g.last ? new Date(g.last).getTime() : 0])
+  )
   return teams
-    .map((t: { id: string }, i: number) => ({ id: t.id, i, r: rec.get(t.id) ?? { wins: 0, losses: 0, ties: 0, pointsFor: 0 } }))
+    .map((t: { id: string }, i: number) => ({ id: t.id, i, last: lastByTeam.get(t.id) ?? 0 }))
     .sort(
-      (a: { r: { wins: number; pointsFor: number }; i: number }, b: { r: { wins: number; pointsFor: number }; i: number }) =>
-        b.r.wins - a.r.wins || b.r.pointsFor - a.r.pointsFor || a.i - b.i
+      (a: { last: number; i: number }, b: { last: number; i: number }) =>
+        a.last - b.last || a.i - b.i
     )
     .map((t: { id: string }) => t.id)
+}
+
+// Where free agency stands right now, from today's real schedule: the
+// pool is OPEN until the first tipoff of the Eastern day (or all day
+// when nobody plays), then claims-only until tomorrow's clear.
+const ESPN_BOARD = 'https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard'
+
+export async function faWindow(now = new Date()): Promise<{
+  mode: 'open' | 'waivers'
+  firstTip: string | null
+}> {
+  try {
+    const yyyymmdd = easternToday(now).replace(/-/g, '')
+    const board = (await (await fetch(`${ESPN_BOARD}?dates=${yyyymmdd}`)).json()) as {
+      events?: Array<{ date: string }>
+    }
+    const tips = (board.events ?? []).map((e) => new Date(e.date).getTime())
+    if (tips.length === 0) return { mode: 'open', firstTip: null }
+    const first = Math.min(...tips)
+    return {
+      mode: now.getTime() < first ? 'open' : 'waivers',
+      firstTip: new Date(first).toISOString(),
+    }
+  } catch {
+    // If the schedule is unreachable, fail toward waivers — a queued
+    // claim is recoverable; a wrongly-instant pickup is not.
+    return { mode: 'waivers', firstTip: null }
+  }
+}
+
+export async function logTransaction(
+  db: Db,
+  leagueId: string,
+  type: 'add_drop' | 'waiver' | 'trade',
+  teamIds: string[],
+  detail: Record<string, unknown>
+) {
+  await db.insert(mnsTransactions).values({ leagueId, type, teamIds, detail })
 }
 
 export async function processWaivers(
@@ -78,7 +134,7 @@ export async function processWaivers(
   )
 
   const players = await db
-    .select({ id: mnsPlayers.id, teamId: mnsPlayers.teamId, salary: mnsPlayers.salary })
+    .select({ id: mnsPlayers.id, name: mnsPlayers.name, teamId: mnsPlayers.teamId, salary: mnsPlayers.salary })
     .from(mnsPlayers)
     .where(eq(mnsPlayers.leagueId, leagueId))
   const byId = new Map(players.map((p: { id: string }) => [p.id, p]))
@@ -129,6 +185,10 @@ export async function processWaivers(
         .update(mnsWaiverClaims)
         .set({ status: 'granted', grantedPlayerId: grantedId, processedAt: now, updatedAt: now })
         .where(eq(mnsWaiverClaims.id, claim.id))
+      await logTransaction(db, leagueId, 'waiver', [claim.teamId], {
+        added: (byId.get(grantedId) as { name?: string })?.name ?? grantedId,
+        dropped: (byId.get(claim.dropPlayerId) as { name?: string })?.name ?? claim.dropPlayerId,
+      })
       result.granted++
     } else {
       await db
