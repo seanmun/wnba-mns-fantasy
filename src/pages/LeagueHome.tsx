@@ -217,6 +217,8 @@ interface StandingRow {
 // canonical board; this is the at-a-glance version.
 function StandingsSection({ leagueId, myUserId }: { leagueId: string; myUserId: string | null }) {
   const { apiFetch } = useApi()
+  const { currentLeague } = useLeague()
+  const cap = currentLeague?.config.cap?.enabled ? currentLeague.config.cap : null
   const [rows, setRows] = useState<StandingRow[] | null>(null)
 
   useEffect(() => {
@@ -272,8 +274,44 @@ function StandingsSection({ leagueId, myUserId }: { leagueId: string; myUserId: 
                 {t.wins}-{t.losses}
                 {t.ties ? `-${t.ties}` : ''}
               </span>
-              <span className="w-16 text-right text-xs text-gray-500 tabular-nums">
-                ${(t.salary / 1_000_000).toFixed(1)}M
+              <span className="w-20 flex flex-col items-end gap-1">
+                <span
+                  className="text-xs tabular-nums"
+                  style={{
+                    color: cap
+                      ? t.salary > cap.secondApron
+                        ? 'var(--color-pick-loss, #ff453a)'
+                        : t.salary > cap.firstApron
+                          ? 'var(--color-key, #ffb000)'
+                          : 'var(--color-muted-foreground)'
+                      : 'var(--color-muted-foreground)',
+                  }}
+                >
+                  ${(t.salary / 1_000_000).toFixed(1)}M
+                  {cap && t.salary > cap.secondApron
+                    ? ' · 2nd'
+                    : cap && t.salary > cap.firstApron
+                      ? ' · apron'
+                      : ''}
+                </span>
+                {/* Everyone's cap position on one scale — the mini
+                    version of the team page's bar, same colors. */}
+                {cap ? (
+                  <span className="relative block w-16 h-1.5 rounded-full bg-[var(--color-border)] overflow-hidden">
+                    <span
+                      className="absolute inset-y-0 left-0"
+                      style={{
+                        width: `${Math.min(100, (t.salary / cap.hardCap) * 100)}%`,
+                        background:
+                          t.salary > cap.secondApron
+                            ? 'var(--color-pick-loss, #ff453a)'
+                            : t.salary > cap.firstApron
+                              ? 'var(--color-key, #ffb000)'
+                              : 'var(--color-accent)',
+                      }}
+                    />
+                  </span>
+                ) : null}
               </span>
             </Link>
           )
