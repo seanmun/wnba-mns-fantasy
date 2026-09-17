@@ -188,23 +188,26 @@ export function MatchupDetail() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-2 pb-24">
-      <PageHeader
-        back={`/league/${leagueId}`}
-        backLabel="League home"
-        eyebrow={`Week ${matchup.matchupWeek} · ${matchup.status === 'final' ? 'Final' : matchup.status === 'live' ? 'Live' : 'Scheduled'}`}
-        title={
-          <span className="tabular-nums">
-            {left.name} {left.score} — {right.score} {right.name}
-          </span>
-        }
-        status={`Category score · ${matchup.startDate} to ${matchup.endDate}`}
-      >
-        <div className="mt-2">
+      {/* Games rides the back-link row: League home left, the night's
+          board top right. */}
+      <div className="relative">
+        <PageHeader
+          back={`/league/${leagueId}`}
+          backLabel="League home"
+          eyebrow={`Week ${matchup.matchupWeek} · ${matchup.status === 'final' ? 'Final' : matchup.status === 'live' ? 'Live' : 'Scheduled'}`}
+          title={
+            <span className="tabular-nums">
+              {left.name} {left.score} — {right.score} {right.name}
+            </span>
+          }
+          status={`Category score · ${matchup.startDate} to ${matchup.endDate}`}
+        />
+        <div className="absolute right-0 top-6">
           <Button variant="quiet" to={`/league/${leagueId}/scores`}>
             <Tv aria-hidden className="mr-1.5" /> Games
           </Button>
         </div>
-      </PageHeader>
+      </div>
 
       {cats.length > 0 && (
         <div className="mb-6 rounded-lg border border-[var(--color-border)] bg-mns-card overflow-hidden">
