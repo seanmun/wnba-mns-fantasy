@@ -4,12 +4,23 @@ import { toast } from 'sonner'
 import { useApi } from '../hooks/useApi'
 import { Button, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
 
+interface PlayerAvg {
+  gp: number
+  ppg: number
+  rpg: number
+  apg: number
+  spg: number
+  bpg: number
+  tpg: number
+  fgPct: number
+}
 interface WirePlayer {
   id: string
   name: string
   position: string | null
   teamCode: string | null
   salary: number | null
+  avg: PlayerAvg | null
 }
 interface WireState {
   myTeamId: string | null
@@ -30,6 +41,10 @@ interface WireState {
 }
 
 const fmtSalary = (n: number | null) => (n != null ? `$${(n / 1000).toFixed(0)}k` : '')
+const fmtAvg = (a: PlayerAvg | null) =>
+  a && a.gp > 0
+    ? `${a.gp}g · ${a.ppg}p ${a.rpg}r ${a.apg}a · ${a.fgPct}% FG`
+    : 'no games on file'
 
 // Free agency, two gears set by the day's real schedule: OPEN until
 // the first tipoff (pick one, name the drop, it's instant), then
@@ -42,6 +57,7 @@ export function FreeAgents() {
   const [state, setState] = useState<WireState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [adds, setAdds] = useState<string[]>([])
+  const [sortBy, setSortBy] = useState<'ppg' | 'rpg' | 'apg' | 'salary'>('ppg')
   const [drop, setDrop] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -201,15 +217,48 @@ export function FreeAgents() {
         </div>
       ) : null}
 
-      <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-2">
-        Available
-      </h2>
+      <div className="flex items-baseline justify-between mb-2">
+        <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-muted-foreground)]">
+          Available
+        </h2>
+        <div className="flex gap-1">
+          {(
+            [
+              ['ppg', 'Pts'],
+              ['rpg', 'Reb'],
+              ['apg', 'Ast'],
+              ['salary', '$'],
+            ] as const
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setSortBy(k)}
+              aria-pressed={sortBy === k}
+              className={
+                'text-xs rounded-full px-2.5 min-h-[2.25rem] border ' +
+                (sortBy === k
+                  ? 'border-[var(--color-accent)] text-[var(--color-accent)] font-bold'
+                  : 'border-[var(--color-border)] text-[var(--color-muted-foreground)]')
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
       <ul className="flex flex-col gap-1.5 mb-6">
-        {state.freeAgents.slice(0, 80).map((p) => (
+        {[...state.freeAgents]
+          .sort((a, b) =>
+            sortBy === 'salary'
+              ? (b.salary ?? 0) - (a.salary ?? 0)
+              : (b.avg?.[sortBy] ?? 0) - (a.avg?.[sortBy] ?? 0)
+          )
+          .slice(0, 80)
+          .map((p) => (
           <li key={p.id}>
             <ListRow
               title={p.name}
-              sub={[p.position, p.teamCode, fmtSalary(p.salary)].filter(Boolean).join(' · ')}
+              sub={`${[p.position, p.teamCode, fmtSalary(p.salary)].filter(Boolean).join(' · ')} — ${fmtAvg(p.avg)}`}
               end={
                 state.myTeamId ? (
                   <Button

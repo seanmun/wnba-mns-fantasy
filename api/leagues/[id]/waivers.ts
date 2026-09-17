@@ -5,6 +5,7 @@ import { db } from '../../_db.js'
 import {
   mnsLeagues,
   mnsPlayers,
+  mnsPlayerStatLines,
   mnsTeamOwners,
   mnsTeams,
   mnsWaiverClaims,
@@ -51,6 +52,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .select()
         .from(mnsPlayers)
         .where(eq(mnsPlayers.leagueId, leagueId))
+
+      // Season averages from the real box scores on file — the
+      // research half of "who do I pick up".
+      const agg = await db
+        .select({
+          playerId: mnsPlayerStatLines.playerId,
+          gp: sql<number>`count(*) filter (where ${mnsPlayerStatLines.min} > 0)`,
+          pts: sql<number>`coalesce(sum(${mnsPlayerStatLines.pts}), 0)`,
+          reb: sql<number>`coalesce(sum(${mnsPlayerStatLines.reb}), 0)`,
+          ast: sql<number>`coalesce(sum(${mnsPlayerStatLines.ast}), 0)`,
+          stl: sql<number>`coalesce(sum(${mnsPlayerStatLines.stl}), 0)`,
+          blk: sql<number>`coalesce(sum(${mnsPlayerStatLines.blk}), 0)`,
+          tpm: sql<number>`coalesce(sum(${mnsPlayerStatLines.tpm}), 0)`,
+          fgm: sql<number>`coalesce(sum(${mnsPlayerStatLines.fgm}), 0)`,
+          fga: sql<number>`coalesce(sum(${mnsPlayerStatLines.fga}), 0)`,
+        })
+        .from(mnsPlayerStatLines)
+        .where(eq(mnsPlayerStatLines.leagueId, leagueId))
+        .groupBy(mnsPlayerStatLines.playerId)
+      const per = (v: number, gp: number) => (gp > 0 ? Math.round((v / gp) * 10) / 10 : 0)
+      const avgByPlayer = new Map(
+        agg.map((a) => [
+          a.playerId,
+          {
+            gp: Number(a.gp),
+            ppg: per(Number(a.pts), Number(a.gp)),
+            rpg: per(Number(a.reb), Number(a.gp)),
+            apg: per(Number(a.ast), Number(a.gp)),
+            spg: per(Number(a.stl), Number(a.gp)),
+            bpg: per(Number(a.blk), Number(a.gp)),
+            tpg: per(Number(a.tpm), Number(a.gp)),
+            fgPct: Number(a.fga) > 0 ? Math.round((Number(a.fgm) / Number(a.fga)) * 1000) / 10 : 0,
+          },
+        ])
+      )
+
       const teams = await db.select().from(mnsTeams).where(eq(mnsTeams.leagueId, leagueId))
       const teamName = new Map(teams.map((t) => [t.id, t.name]))
       const playerName = new Map(players.map((p) => [p.id, p.name]))
@@ -82,12 +119,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         priority: order.map((id, i) => ({ position: i + 1, teamId: id, teamName: teamName.get(id) ?? id, isMe: mine?.teamId === id })),
         myRoster: players
           .filter((p) => mine && p.teamId === mine.teamId)
-          .map((p) => ({ id: p.id, name: p.name, position: p.position, teamCode: p.teamCode, salary: p.salary }))
-          .sort((a, b) => (b.salary ?? 0) - (a.salary ?? 0)),
+          .map((p) => ({ id: p.id, name: p.name, position: p.position, teamCode: p.teamCode, salary: p.salary, avg: avgByPlayer.get(p.id) ?? null }))
+          .sort((a, b) => (b.avg?.ppg ?? 0) - (a.avg?.ppg ?? 0)),
         freeAgents: players
           .filter((p) => p.teamId == null)
-          .map((p) => ({ id: p.id, name: p.name, position: p.position, teamCode: p.teamCode, salary: p.salary }))
-          .sort((a, b) => (b.salary ?? 0) - (a.salary ?? 0)),
+          .map((p) => ({ id: p.id, name: p.name, position: p.position, teamCode: p.teamCode, salary: p.salary, avg: avgByPlayer.get(p.id) ?? null }))
+          .sort((a, b) => (b.avg?.ppg ?? 0) - (a.avg?.ppg ?? 0)),
         myClaim: myClaim
           ? {
               id: myClaim.id,
