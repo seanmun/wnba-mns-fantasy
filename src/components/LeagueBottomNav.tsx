@@ -10,6 +10,7 @@ export function LeagueBottomNav() {
       basePath={`/league/${leagueId}`}
       playLabel="My Team"
       playPath="my-team"
+      extraTab={{ path: 'matchup', label: 'Matchup', icon: '\u{1F3C0}' }}
     />
   )
 }

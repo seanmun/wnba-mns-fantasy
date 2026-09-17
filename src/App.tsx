@@ -159,6 +159,7 @@ export function App() {
             {/* League scope */}
             <Route path="/league/:leagueId" element={<ProtectedRoute><LeagueLayout><LeagueHome /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/matchup/:matchupId" element={<ProtectedRoute><LeagueLayout><MatchupDetail /></LeagueLayout></ProtectedRoute>} />
+            <Route path="/league/:leagueId/matchup" element={<ProtectedRoute><LeagueLayout><MatchupDetail /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/team/:teamId" element={<ProtectedRoute><LeagueLayout><OwnerDashboard /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/my-team" element={<ProtectedRoute><LeagueLayout><OwnerDashboard /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/standings" element={<ProtectedRoute><LeagueLayout><Standings /></LeagueLayout></ProtectedRoute>} />

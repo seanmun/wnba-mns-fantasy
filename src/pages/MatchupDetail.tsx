@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { useUser } from '@clerk/clerk-react'
 import { useApi } from '../hooks/useApi'
 import { EmptyState, PageHeader, Skeleton } from '../ui/components'
 
@@ -48,23 +49,52 @@ const fmtCat = (cat: string, v: number | undefined) =>
 // this page only displays what the scoring pass stored.
 export function MatchupDetail() {
   const { leagueId = '', matchupId = '' } = useParams()
+  const { user } = useUser()
   const { apiFetch } = useApi()
   const [data, setData] = useState<MatchupPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    apiFetch<MatchupPayload>(`/api/leagues/${leagueId}/matchups?matchupId=${matchupId}`)
-      .then((d) => {
+    const load = async () => {
+      try {
+        let id = matchupId
+        // The Matchup tab arrives with no id: resolve to MY current
+        // matchup (any member's first matchup if the caller owns no
+        // team — a viewer still gets the week).
+        if (!id) {
+          const [teams, week] = await Promise.all([
+            apiFetch<Array<{ id: string; owners: Array<{ userId: string | null }> }>>(
+              `/api/leagues/${leagueId}/teams`
+            ),
+            apiFetch<{ matchups: Array<{ id: string; homeTeamId: string; awayTeamId: string }> }>(
+              `/api/leagues/${leagueId}/matchups`
+            ),
+          ])
+          const myTeam = teams.find((t) => t.owners.some((o) => o.userId === user?.id))
+          const mineOrFirst =
+            week.matchups.find(
+              (m) => myTeam && (m.homeTeamId === myTeam.id || m.awayTeamId === myTeam.id)
+            ) ?? week.matchups[0]
+          if (!mineOrFirst) {
+            if (!cancelled) setError('No matchups yet — the season may not have started.')
+            return
+          }
+          id = mineOrFirst.id
+        }
+        const d = await apiFetch<MatchupPayload>(
+          `/api/leagues/${leagueId}/matchups?matchupId=${id}`
+        )
         if (!cancelled) setData(d)
-      })
-      .catch((e: Error) => {
-        if (!cancelled) setError(e.message)
-      })
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load')
+      }
+    }
+    void load()
     return () => {
       cancelled = true
     }
-  }, [apiFetch, leagueId, matchupId])
+  }, [apiFetch, leagueId, matchupId, user?.id])
 
   if (error) return <EmptyState title="Something went wrong">{error}</EmptyState>
   if (!data) {

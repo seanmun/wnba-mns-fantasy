@@ -280,6 +280,13 @@ export function AdminLeague() {
             }
           />
           <NumRow
+            label="Cap Floor (minimum spend, 0 = none)"
+            value={config.cap.floor}
+            onChange={(v) =>
+              setConfig({ ...config, cap: { ...config.cap, floor: Number(v) } })
+            }
+          />
+          <NumRow
             label="Hard Cap"
             value={config.cap.hardCap}
             onChange={(v) =>
