@@ -50,6 +50,12 @@ function CapCard({
   fees: { firstApronFee: number; penaltyRatePerM: number }
 }) {
   const pct = (v: number) => Math.min(100, (v / cap.hardCap) * 100)
+  const thresholds = [
+    { label: 'floor', value: cap.floor, color: 'var(--color-muted-foreground)' },
+    { label: '1st apron', value: cap.firstApron, color: 'var(--color-key, #ffb000)' },
+    { label: '2nd apron', value: cap.secondApron, color: 'var(--color-pick-pending, #00e5ff)' },
+    { label: 'hard cap', value: cap.hardCap, color: 'var(--color-pick-loss, #ff453a)' },
+  ].filter((t) => t.value > 0)
   const overSecond = Math.max(0, capUsed - cap.secondApron)
   const dues =
     (capUsed > cap.firstApron ? fees.firstApronFee : 0) +
@@ -65,7 +71,7 @@ function CapCard({
           <span className="text-sm text-[var(--color-muted-foreground)]"> of {fmtM(cap.hardCap)} hard cap</span>
         </span>
       </div>
-      <div className="relative h-3 rounded-full bg-[var(--color-border)] overflow-hidden mb-1">
+      <div className="relative h-3 rounded-full bg-[var(--color-border)] overflow-hidden">
         <div
           className="absolute inset-y-0 left-0"
           style={{
@@ -74,19 +80,33 @@ function CapCard({
               capUsed > cap.secondApron
                 ? 'var(--color-pick-loss, #ff453a)'
                 : capUsed > cap.firstApron
-                  ? '#ffb000'
+                  ? 'var(--color-key, #ffb000)'
                   : 'var(--color-accent)',
           }}
         />
-        {[cap.floor, cap.firstApron, cap.secondApron].map((t) => (
-          <div key={t} className="absolute inset-y-0 w-px bg-[var(--color-background)]" style={{ left: `${pct(t)}%` }} />
+        {thresholds.map((t) => (
+          <div
+            key={t.label}
+            className="absolute inset-y-0 w-0.5"
+            style={{ left: `${pct(t.value)}%`, background: t.color }}
+          />
         ))}
       </div>
-      <div className="flex justify-between text-[0.68rem] text-[var(--color-muted-foreground)] tabular-nums mb-2">
-        <span>floor {fmtM(cap.floor)}</span>
-        <span>1st apron {fmtM(cap.firstApron)}</span>
-        <span>2nd {fmtM(cap.secondApron)}</span>
-        <span>hard {fmtM(cap.hardCap)}</span>
+      {/* Labels anchored to their REAL positions, connector down from
+          the tick, staggered two rows so near thresholds never collide. */}
+      <div className="relative h-14 mb-1">
+        {thresholds.map((t, i) => (
+          <div
+            key={t.label}
+            className="absolute flex flex-col items-center"
+            style={{ left: `${Math.min(94, Math.max(6, pct(t.value)))}%`, transform: 'translateX(-50%)' }}
+          >
+            <div style={{ width: 2, height: i % 2 === 0 ? 8 : 26, background: t.color }} />
+            <span className="text-[0.65rem] tabular-nums whitespace-nowrap" style={{ color: t.color }}>
+              {t.label} {fmtM(t.value)}
+            </span>
+          </div>
+        ))}
       </div>
       <p className="text-sm">
         {capUsed > cap.secondApron ? (
