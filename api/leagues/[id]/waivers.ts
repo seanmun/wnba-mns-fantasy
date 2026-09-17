@@ -5,7 +5,6 @@ import { db } from '../../_db.js'
 import {
   mnsLeagues,
   mnsPlayers,
-  mnsPlayerStatLines,
   mnsTeamOwners,
   mnsTeams,
   mnsWaiverClaims,
