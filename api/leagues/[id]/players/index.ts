@@ -4,6 +4,7 @@ import { verifyAuth } from '../../../_middleware.js'
 import { db } from '../../../_db.js'
 import { mnsPlayers } from '../../../../src/lib/db/schema.js'
 import { logger } from '../../../_logger.js'
+import { seasonAverages } from '../../../../src/lib/season/stats.js'
 import type { Player, ExternalIds, RookieDraftInfo, MigrationSource, PlayerSlot } from '../../../../src/types/player.js'
 import type { Sport } from '../../../../src/types/leagueConfig.js'
 
@@ -54,7 +55,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Sort by salary desc (drizzle order by asc by default for bigint;
     // we want highest first)
     const sorted = [...rows].sort((a, b) => Number(b.salary) - Number(a.salary))
-    return res.status(200).json(sorted.map(mapPlayerRow))
+    // Season averages ride along so every roster surface can show the
+    // player's real year without a second request.
+    const avgs = await seasonAverages(db, leagueId)
+    return res.status(200).json(
+      sorted.map((r) => ({ ...mapPlayerRow(r), avg: avgs.get(r.id) ?? null }))
+    )
   } catch (err) {
     logger.error('GET /api/leagues/[id]/players failed', {
       leagueId,

@@ -4,6 +4,7 @@ import { useUser } from '@clerk/clerk-react'
 import { toast } from 'sonner'
 import { useApi } from '../hooks/useApi'
 import { Button, Chip, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
+import { useLeague } from '../contexts/LeagueContext'
 
 interface OwnerInfo {
   userId: string | null
@@ -26,6 +27,82 @@ interface RosterPlayer {
   onIR: boolean
   isRookie: boolean
   keeperRound?: number | null
+  avg?: {
+    gp: number
+    ppg: number
+    rpg: number
+    apg: number
+    fgPct: number
+  } | null
+}
+
+const M = 1_000_000
+const fmtM = (n: number) => `$${(n / M).toFixed(1)}M`
+
+// The cap picture, mns-style: one bar, four thresholds, current dues.
+function CapCard({
+  capUsed,
+  cap,
+  fees,
+}: {
+  capUsed: number
+  cap: { floor: number; base: number; firstApron: number; secondApron: number; hardCap: number }
+  fees: { firstApronFee: number; penaltyRatePerM: number }
+}) {
+  const pct = (v: number) => Math.min(100, (v / cap.hardCap) * 100)
+  const overSecond = Math.max(0, capUsed - cap.secondApron)
+  const dues =
+    (capUsed > cap.firstApron ? fees.firstApronFee : 0) +
+    Math.ceil(overSecond / M) * fees.penaltyRatePerM
+  return (
+    <div className="mb-6 rounded-lg border border-[var(--color-border)] bg-mns-card p-4">
+      <div className="flex items-baseline justify-between mb-2">
+        <span className="text-sm font-bold uppercase tracking-wider text-[var(--color-muted-foreground)]">
+          Salary cap
+        </span>
+        <span className="tabular-nums">
+          <b>{fmtM(capUsed)}</b>
+          <span className="text-sm text-[var(--color-muted-foreground)]"> of {fmtM(cap.hardCap)} hard cap</span>
+        </span>
+      </div>
+      <div className="relative h-3 rounded-full bg-[var(--color-border)] overflow-hidden mb-1">
+        <div
+          className="absolute inset-y-0 left-0"
+          style={{
+            width: `${pct(capUsed)}%`,
+            background:
+              capUsed > cap.secondApron
+                ? 'var(--color-pick-loss, #ff453a)'
+                : capUsed > cap.firstApron
+                  ? '#ffb000'
+                  : 'var(--color-accent)',
+          }}
+        />
+        {[cap.floor, cap.firstApron, cap.secondApron].map((t) => (
+          <div key={t} className="absolute inset-y-0 w-px bg-[var(--color-background)]" style={{ left: `${pct(t)}%` }} />
+        ))}
+      </div>
+      <div className="flex justify-between text-[0.68rem] text-[var(--color-muted-foreground)] tabular-nums mb-2">
+        <span>floor {fmtM(cap.floor)}</span>
+        <span>1st apron {fmtM(cap.firstApron)}</span>
+        <span>2nd {fmtM(cap.secondApron)}</span>
+        <span>hard {fmtM(cap.hardCap)}</span>
+      </div>
+      <p className="text-sm">
+        {capUsed > cap.secondApron ? (
+          <b className="text-[var(--color-pick-loss,#ff453a)]">
+            {fmtM(overSecond)} over the 2nd apron — dues at ${dues} (${fees.penaltyRatePerM}/M over)
+          </b>
+        ) : capUsed > cap.firstApron ? (
+          <b style={{ color: '#ffb000' }}>Over the 1st apron — ${fees.firstApronFee} fee applies</b>
+        ) : capUsed < cap.floor ? (
+          <span className="text-[var(--color-muted-foreground)]">Below the floor ({fmtM(cap.floor)}).</span>
+        ) : (
+          <span className="text-[var(--color-accent)]">Under both aprons — no cap dues.</span>
+        )}
+      </p>
+    </div>
+  )
 }
 
 // A team's page: the roster, who owns it, cap usage. Reached from the
@@ -35,6 +112,7 @@ export function OwnerDashboard() {
   const { leagueId = '', teamId } = useParams()
   const { user } = useUser()
   const { apiFetch } = useApi()
+  const { currentLeague } = useLeague()
   const [teams, setTeams] = useState<TeamInfo[] | null>(null)
   const [players, setPlayers] = useState<RosterPlayer[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -113,6 +191,9 @@ export function OwnerDashboard() {
         title={team.name}
         status={`${team.owners.map((o) => o.displayName ?? o.email.split('@')[0]).join(' · ') || 'No owner yet'} · ${roster.length} players · $${capUsed.toLocaleString()} cap`}
       />
+      {currentLeague?.config.cap?.enabled ? (
+        <CapCard capUsed={capUsed} cap={currentLeague.config.cap} fees={currentLeague.config.fees} />
+      ) : null}
       {roster.length === 0 ? (
         <EmptyState title="No players yet">
           The roster fills from the draft, waivers and trades.
@@ -145,7 +226,9 @@ export function OwnerDashboard() {
                             ) : null}
                           </>
                         }
-                        sub={[p.position, p.teamCode].filter(Boolean).join(' · ')}
+                        sub={`${[p.position, p.teamCode, p.salary != null ? fmtM(p.salary) : null]
+                          .filter(Boolean)
+                          .join(' · ')}${p.avg && p.avg.gp > 0 ? ` — ${p.avg.gp}g · ${p.avg.ppg}p ${p.avg.rpg}r ${p.avg.apg}a · ${p.avg.fgPct}%` : ''}`}
                         end={
                           mine ? (
                             <span className="flex gap-1">
