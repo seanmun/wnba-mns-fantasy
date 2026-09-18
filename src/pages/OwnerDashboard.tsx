@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
 import { toast } from 'sonner'
 import { ChevronLeft, ChevronRight, EllipsisVertical, X } from 'lucide-react'
@@ -51,6 +51,11 @@ interface DayLine {
   blk: number
   fgm: number
   fga: number
+}
+interface PendingClaim {
+  addNames: string[]
+  dropName: string | null
+  clearsOn: string
 }
 interface LineupDay {
   date: string
@@ -187,6 +192,7 @@ export function OwnerDashboard() {
   const [day, setDay] = useState<LineupDay | null>(null)
   const [openRow, setOpenRow] = useState<string | null>(null)
   const [confirmDrop, setConfirmDrop] = useState<string | null>(null)
+  const [claim, setClaim] = useState<PendingClaim | null>(null)
 
   const load = () => {
     Promise.all([
@@ -216,6 +222,19 @@ export function OwnerDashboard() {
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(loadDay, [apiFetch, leagueId, team?.id, selDate])
+
+  // Your pending waiver claim belongs on your team page too — the
+  // move already in flight is part of the roster's truth.
+  const owned = team?.owners.some((o) => o.userId != null && o.userId === user?.id) ?? false
+  useEffect(() => {
+    if (!owned) {
+      setClaim(null)
+      return
+    }
+    apiFetch<{ myClaim: PendingClaim | null }>(`/api/leagues/${leagueId}/waivers`)
+      .then((w) => setClaim(w.myClaim))
+      .catch(() => setClaim(null))
+  }, [apiFetch, leagueId, owned])
 
   const moveSlot = async (playerId: string, slot: 'active' | 'bench' | 'ir' | 'drop') => {
     setBusy(true)
@@ -309,6 +328,27 @@ export function OwnerDashboard() {
       />
       {currentLeague?.config.cap?.enabled ? (
         <CapCard capUsed={capUsed} cap={currentLeague.config.cap} fees={currentLeague.config.fees} />
+      ) : null}
+
+      {mine && claim ? (
+        <div className="mb-4 rounded-lg border border-[var(--color-accent)] bg-mns-card p-3 text-sm">
+          <b>Waiver claim in</b> — clears {claim.clearsOn} at 8am ET
+          <ol className="mt-1 list-decimal list-inside tabular-nums">
+            {claim.addNames.map((n, i) => (
+              <li key={i}>{n}</li>
+            ))}
+          </ol>
+          <p className="mt-1 text-[var(--color-muted-foreground)]">
+            {claim.dropName ? `Dropping ${claim.dropName}` : 'No drop — filling an open spot'} · you
+            get the first name still available.
+          </p>
+          <Link
+            to={`/league/${leagueId}/free-agents`}
+            className="mt-1 inline-block font-bold text-[var(--color-accent)]"
+          >
+            Change or withdraw →
+          </Link>
+        </div>
       ) : null}
 
       {/* The day carousel: yesterday is history, tomorrow is a plan. */}
