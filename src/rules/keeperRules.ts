@@ -1,7 +1,7 @@
 import type { LeagueConfig } from '../types/leagueConfig'
 import type { Player } from '../types/player'
 import type { RosterEntry, RosterSummary } from '../types/roster'
-import { lookupRookieKeeperRound } from './rookieKeeperMap'
+import { lookupRookieKeeperRound } from './rookieKeeperMap.js'
 
 // Derive a player's base keeper round (before stacking). Returns null if
 // no source rule applies and config.keeper.fallbackRound is null — the

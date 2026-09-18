@@ -1,7 +1,7 @@
 import type { LeagueConfig } from '../types/leagueConfig'
 import type { Player } from '../types/player'
 import type { Decision, RosterEntry, RosterSummary } from '../types/roster'
-import { stackKeeperRounds, computeSummary } from './keeperRules'
+import { stackKeeperRounds, computeSummary } from './keeperRules.js'
 
 export interface TradeAssetForCap {
   type: 'keeper' | 'redshirt' | 'int_stash' | 'rookie_pick'
