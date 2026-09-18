@@ -254,8 +254,36 @@ export function MatchupDetail() {
             const rv = right.vals?.[c]
             const lWins = (lv ?? 0) > (rv ?? 0)
             const rWins = (rv ?? 0) > (lv ?? 0)
+            // How far ahead the leader is, as a share of the trailing
+            // side (60 vs 50 = 20%), capped at a full half-bar. The
+            // tug-of-war fill shows at a glance which categories are
+            // close fights and which are gone.
+            const lo = Math.min(lv ?? 0, rv ?? 0)
+            const hi = Math.max(lv ?? 0, rv ?? 0)
+            const pct = hi > lo ? Math.min(100, lo > 0 ? ((hi - lo) / lo) * 100 : 100) : 0
             return (
-              <div key={c} className="grid grid-cols-[1fr_auto_1fr] items-center px-4 py-1.5 border-b border-[var(--color-border)] last:border-b-0 tabular-nums text-sm">
+              <div key={c} className="relative isolate grid grid-cols-[1fr_auto_1fr] items-center px-4 py-1.5 border-b border-[var(--color-border)] last:border-b-0 tabular-nums text-sm">
+                {pct > 0 ? (
+                  <span
+                    aria-hidden
+                    className="absolute inset-y-0 -z-10 pointer-events-none"
+                    style={
+                      lWins
+                        ? {
+                            right: '50%',
+                            width: `${pct / 2}%`,
+                            background:
+                              'linear-gradient(to left, color-mix(in srgb, var(--color-accent) 22%, transparent), transparent)',
+                          }
+                        : {
+                            left: '50%',
+                            width: `${pct / 2}%`,
+                            background:
+                              'linear-gradient(to right, color-mix(in srgb, var(--color-accent) 22%, transparent), transparent)',
+                          }
+                    }
+                  />
+                ) : null}
                 <span className={lWins ? 'text-[var(--color-accent)] font-bold' : ''}>{fmtCat(c, lv)}</span>
                 <span className="px-3 text-center text-xs font-semibold text-[var(--color-muted-foreground)]">{c}</span>
                 <span className={'text-right ' + (rWins ? 'text-[var(--color-accent)] font-bold' : '')}>{fmtCat(c, rv)}</span>
