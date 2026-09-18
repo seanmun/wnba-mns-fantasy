@@ -78,6 +78,17 @@ export async function faWindow(now = new Date()): Promise<{
   firstTip: string | null
 }> {
   try {
+    // The overnight hold: midnight flips the calendar but NOT the
+    // window. If yesterday had games, waivers stay closed until the
+    // 8am clear — otherwise 12:01am would reopen instant adds while
+    // last night's claims are still waiting in line.
+    if (Number(ET_HOUR.format(now)) < 8) {
+      const yesterday = easternToday(new Date(now.getTime() - 24 * 3600 * 1000)).replace(/-/g, '')
+      const yBoard = (await (await fetch(`${ESPN_BOARD}?dates=${yesterday}`)).json()) as {
+        events?: Array<{ date: string }>
+      }
+      if ((yBoard.events ?? []).length > 0) return { mode: 'waivers', firstTip: null }
+    }
     const yyyymmdd = easternToday(now).replace(/-/g, '')
     const board = (await (await fetch(`${ESPN_BOARD}?dates=${yyyymmdd}`)).json()) as {
       events?: Array<{ date: string }>

@@ -13,6 +13,7 @@ import {
   faWindow,
   logTransaction,
   nextClearDate,
+  processWaivers,
   waiverLog,
   waiverPriority,
 } from '../../../src/lib/season/waivers.js'
@@ -146,6 +147,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // executes right now, first tap wins, no priority cost.
       const window = await faWindow()
       if (window.mode === 'open') {
+        // The queue clears BEFORE anyone's instant add — otherwise the
+        // first person awake at 8am could snipe a player someone
+        // claimed overnight, before the tick has run. Idempotent and
+        // self-gated, so calling it here is free when nothing is due.
+        await processWaivers(db, leagueId, league.config as import('../../../src/types/leagueConfig.js').LeagueConfig)
         const addId = addPlayerIds[0]
         if (config.cap?.enabled) {
           const rows = await db
