@@ -16,6 +16,9 @@ interface PrizesPayload {
     usdValue: number | null
     lastUpdated: string | null
     error: string | null
+    baselineUsd?: number | null
+    baselineAt?: string | null
+    gainPct?: number | null
   } | null
   splits: Array<{ label: string; share: number; amountUsd: number; holder: string | null }>
 }
@@ -71,6 +74,19 @@ export function Prizes() {
         {data.configured && data.wallet?.usdValue != null ? (
           <p className="mt-2 text-sm text-[var(--color-muted-foreground)] tabular-nums">
             {usd(data.potUsd)} cash + {usd(data.wallet.usdValue)} on-chain
+            {data.wallet.gainPct != null ? (
+              <b
+                className={
+                  'ml-2 ' +
+                  (data.wallet.gainPct >= 0
+                    ? 'text-[var(--color-accent)]'
+                    : 'text-[var(--color-pick-loss,#ff453a)]')
+                }
+              >
+                {data.wallet.gainPct >= 0 ? '+' : ''}
+                {data.wallet.gainPct}%
+              </b>
+            ) : null}
           </p>
         ) : !data.configured ? (
           <p className="mt-2 text-sm text-[var(--color-muted-foreground)]">
@@ -104,6 +120,27 @@ export function Prizes() {
               {data.wallet.error ?? 'No valuation yet.'}
             </p>
           )}
+          {data.wallet.baselineUsd != null ? (
+            <p className="mt-1 text-sm tabular-nums">
+              <span className="text-[var(--color-muted-foreground)]">
+                Baseline {usd(data.wallet.baselineUsd)}
+                {data.wallet.baselineAt
+                  ? ` · locked ${new Date(data.wallet.baselineAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                  : ''}{' '}
+                ·
+              </span>{' '}
+              <b
+                className={
+                  (data.wallet.gainPct ?? 0) >= 0
+                    ? 'text-[var(--color-accent)]'
+                    : 'text-[var(--color-pick-loss,#ff453a)]'
+                }
+              >
+                {(data.wallet.gainPct ?? 0) >= 0 ? '+' : ''}
+                {data.wallet.gainPct ?? 0}% since day one
+              </b>
+            </p>
+          ) : null}
           <p className="mt-2 text-xs text-[var(--color-muted-foreground)]">
             A public address being watched, read-only — its balance and full history are visible
             to anyone on-chain.

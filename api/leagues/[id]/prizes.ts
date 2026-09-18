@@ -33,6 +33,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       usdValue: number | null
       lastUpdated: string | null
       error: string | null
+      baselineUsd?: number | null
+      baselineAt?: string | null
+      gainPct?: number | null
     } | null = null
     if (prizes.walletAddress && /^0x[a-fA-F0-9]{40}$/.test(prizes.walletAddress)) {
       const address = prizes.walletAddress
@@ -57,12 +60,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } else {
         wallet = await valueWallet(address)
         if (wallet.usdValue != null) {
+          // The BASELINE (usdInvested) locks at the first successful
+          // valuation — day 1 of tracking — and is never overwritten;
+          // gain/loss reads against it from then on. A new address
+          // starts a new baseline.
           await db
             .insert(mnsPortfolios)
             .values({
               id: leagueId,
               leagueId,
               walletAddress: address,
+              usdInvested: String(wallet.usdValue),
               cachedEthBalance: String(wallet.ethBalance),
               cachedEthPrice: String(wallet.ethPrice),
               cachedUsdValue: String(wallet.usdValue),
@@ -72,6 +80,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               target: mnsPortfolios.id,
               set: {
                 walletAddress: address,
+                ...(cached && cached.walletAddress !== address
+                  ? { usdInvested: String(wallet.usdValue), createdAt: new Date() }
+                  : {}),
                 cachedEthBalance: String(wallet.ethBalance),
                 cachedEthPrice: String(wallet.ethPrice),
                 cachedUsdValue: String(wallet.usdValue),
@@ -90,6 +101,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             error: wallet.error,
           }
         }
+      }
+    }
+
+    // Attach the locked baseline and the move since.
+    if (wallet) {
+      const [row] = await db
+        .select()
+        .from(mnsPortfolios)
+        .where(eq(mnsPortfolios.id, leagueId))
+        .limit(1)
+      const baseline = row ? Number(row.usdInvested) : 0
+      if (row && baseline > 0) {
+        wallet.baselineUsd = baseline
+        wallet.baselineAt = row.createdAt.toISOString()
+        wallet.gainPct =
+          wallet.usdValue != null
+            ? Math.round(((wallet.usdValue - baseline) / baseline) * 1000) / 10
+            : null
       }
     }
 
