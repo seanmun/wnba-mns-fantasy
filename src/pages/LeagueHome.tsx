@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
 import { useApi } from '../hooks/useApi'
 import { useLeague } from '../contexts/LeagueContext'
+import { Trophy } from 'lucide-react'
 import { LEAGUE_PHASE_LABELS, LEAGUE_PHASE_ORDER, type LeaguePhase } from '../types/league'
 
 export function LeagueHome() {
@@ -105,6 +106,7 @@ export function LeagueHome() {
         <>
           <WeekMatchups leagueId={league.id} myUserId={user?.id ?? null} />
           <StandingsSection leagueId={league.id} myUserId={user?.id ?? null} />
+          <PrizesTeaser leagueId={league.id} />
         </>
       ) : (
         <TeamsSection leagueId={league.id} isCommissioner={isCommissioner} myUserId={user?.id ?? null} />
@@ -416,3 +418,31 @@ function TeamsSection({
   )
 }
 
+// One line on the pot — the full picture lives on the Prizes page.
+// Renders nothing until the commissioner sets a pot.
+function PrizesTeaser({ leagueId }: { leagueId: string }) {
+  const { apiFetch } = useApi()
+  const [pot, setPot] = useState<{ totalUsd: number; configured: boolean } | null>(null)
+  useEffect(() => {
+    apiFetch<{ totalUsd: number; configured: boolean }>(`/api/leagues/${leagueId}/prizes`)
+      .then(setPot)
+      .catch(() => setPot(null))
+  }, [apiFetch, leagueId])
+  if (!pot?.configured) return null
+  return (
+    <section className="mb-8">
+      <Link
+        to={`/league/${leagueId}/prizes`}
+        className="flex items-center justify-between bg-mns-card hover:bg-mns-hover border border-gray-800 rounded-lg px-4 py-3 transition-colors"
+      >
+        <span className="flex items-center gap-2 font-bold">
+          <Trophy aria-hidden className="w-5 h-5 text-[var(--color-key,#ffb000)]" /> Prize pool
+        </span>
+        <span className="tabular-nums font-bold">
+          {pot.totalUsd.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
+          <span className="ml-2 text-sm font-normal text-[var(--color-muted-foreground)]">payouts →</span>
+        </span>
+      </Link>
+    </section>
+  )
+}

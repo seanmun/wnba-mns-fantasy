@@ -60,6 +60,14 @@ export interface LeagueConfig {
     activationFee: number
     penaltyRatePerM: number
   }
+  // The pot, TRACKED never handled (platform law, set by NFL's Prizes
+  // tab): cash the manager holds plus an optional public wallet whose
+  // live value counts in. Splits are percents so they follow the pot.
+  prizes?: {
+    potUsd: number
+    walletAddress: string | null
+    splits: Array<{ label: string; share: number }>
+  }
   scoring: {
     categories: string[]
     mode: ScoringModeId

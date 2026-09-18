@@ -43,6 +43,7 @@ const TradeMachine = lazy(() => import('./pages/TradeMachine').then((m) => ({ de
 const Inbox = lazy(() => import('./pages/Inbox').then((m) => ({ default: m.Inbox })))
 const MatchupDetail = lazy(() => import('./pages/MatchupDetail').then((m) => ({ default: m.MatchupDetail })))
 const LiveScores = lazy(() => import('./pages/LiveScores').then((m) => ({ default: m.LiveScores })))
+const Prizes = lazy(() => import('./pages/Prizes').then((m) => ({ default: m.Prizes })))
 const Rules = lazy(() => import('./pages/Rules').then((m) => ({ default: m.Rules })))
 const RecordBook = lazy(() => import('./pages/RecordBook').then((m) => ({ default: m.RecordBook })))
 const Standings = lazy(() => import('./pages/Standings').then((m) => ({ default: m.Standings })))
@@ -162,6 +163,7 @@ export function App() {
             <Route path="/league/:leagueId/matchup/:matchupId" element={<ProtectedRoute><LeagueLayout><MatchupDetail /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/matchup" element={<ProtectedRoute><LeagueLayout><MatchupDetail /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/scores" element={<ProtectedRoute><LeagueLayout><LiveScores /></LeagueLayout></ProtectedRoute>} />
+            <Route path="/league/:leagueId/prizes" element={<ProtectedRoute><LeagueLayout><Prizes /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/team/:teamId" element={<ProtectedRoute><LeagueLayout><OwnerDashboard /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/my-team" element={<ProtectedRoute><LeagueLayout><OwnerDashboard /></LeagueLayout></ProtectedRoute>} />
             <Route path="/league/:leagueId/standings" element={<ProtectedRoute><LeagueLayout><Standings /></LeagueLayout></ProtectedRoute>} />

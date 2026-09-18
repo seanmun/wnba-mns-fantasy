@@ -376,6 +376,108 @@ export function AdminLeague() {
           />
         </Section>
 
+        <Section title="Prize Pool (tracked, never handled)">
+          <NumRow
+            label="Cash Pot (USD)"
+            value={config.prizes?.potUsd ?? 0}
+            onChange={(v) =>
+              setConfig({
+                ...config,
+                prizes: {
+                  potUsd: Number(v),
+                  walletAddress: config.prizes?.walletAddress ?? null,
+                  splits: config.prizes?.splits ?? [],
+                },
+              })
+            }
+          />
+          <Row label="Pool Wallet (ETH address)">
+            <input
+              type="text"
+              value={config.prizes?.walletAddress ?? ''}
+              placeholder="0x… (optional — watched read-only, value adds to the pot)"
+              onChange={(e) =>
+                setConfig({
+                  ...config,
+                  prizes: {
+                    potUsd: config.prizes?.potUsd ?? 0,
+                    walletAddress: e.target.value.trim() || null,
+                    splits: config.prizes?.splits ?? [],
+                  },
+                })
+              }
+              className={inputClass}
+            />
+          </Row>
+          <p className="text-xs text-gray-500">
+            The address is public: anyone can see its balance and full history on-chain.
+            The app only watches it — no keys, no transactions.
+          </p>
+          {(config.prizes?.splits ?? []).map((sp, i) => (
+            <Row key={i} label={`Split ${i + 1}`}>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={sp.label}
+                  placeholder="1st place"
+                  onChange={(e) => {
+                    const splits = [...(config.prizes?.splits ?? [])]
+                    splits[i] = { ...splits[i], label: e.target.value }
+                    setConfig({ ...config, prizes: { potUsd: config.prizes?.potUsd ?? 0, walletAddress: config.prizes?.walletAddress ?? null, splits } })
+                  }}
+                  className={inputClass}
+                />
+                <input
+                  type="number"
+                  value={sp.share}
+                  onChange={(e) => {
+                    const splits = [...(config.prizes?.splits ?? [])]
+                    splits[i] = { ...splits[i], share: Number(e.target.value) }
+                    setConfig({ ...config, prizes: { potUsd: config.prizes?.potUsd ?? 0, walletAddress: config.prizes?.walletAddress ?? null, splits } })
+                  }}
+                  className={inputClass + ' max-w-[6rem]'}
+                />
+                <button
+                  type="button"
+                  aria-label="Remove split"
+                  onClick={() => {
+                    const splits = (config.prizes?.splits ?? []).filter((_, j) => j !== i)
+                    setConfig({ ...config, prizes: { potUsd: config.prizes?.potUsd ?? 0, walletAddress: config.prizes?.walletAddress ?? null, splits } })
+                  }}
+                  className="px-3 text-gray-400 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+            </Row>
+          ))}
+          {(() => {
+            const total = (config.prizes?.splits ?? []).reduce((n, sp) => n + (sp.share || 0), 0)
+            return total !== 100 && (config.prizes?.splits ?? []).length > 0 ? (
+              <p className="text-xs text-yellow-400">Splits add to {total}% — aim for 100%.</p>
+            ) : null
+          })()}
+          <button
+            type="button"
+            onClick={() =>
+              setConfig({
+                ...config,
+                prizes: {
+                  potUsd: config.prizes?.potUsd ?? 0,
+                  walletAddress: config.prizes?.walletAddress ?? null,
+                  splits: [
+                    ...(config.prizes?.splits ?? []),
+                    { label: (config.prizes?.splits ?? []).length === 0 ? '1st place' : (config.prizes?.splits ?? []).length === 1 ? '2nd place' : '', share: 0 },
+                  ],
+                },
+              })
+            }
+            className="text-sm text-green-400 hover:text-green-300"
+          >
+            + Add a split
+          </button>
+        </Section>
+
         <Section title="Scoring">
           <Row label="Mode">
             <select
