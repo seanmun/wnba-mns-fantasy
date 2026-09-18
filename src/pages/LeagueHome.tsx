@@ -161,8 +161,19 @@ function WeekMatchups({ leagueId, myUserId }: { leagueId: string; myUserId: stri
         </Link>
       </div>
       <ul className="grid gap-2 sm:grid-cols-2">
-        {sorted.map((m) => (
-          <li key={m.id} className={isMine(m) ? 'sm:col-span-2' : ''}>
+        {sorted.map((m, i) => (
+          <li
+            key={m.id}
+            className={
+              // Mine leads full width; a lone straggler in the 2-col
+              // grid (odd count of others) also spans, so no card ever
+              // sits half-width next to an empty slot.
+              isMine(m) ||
+              (i === sorted.length - 1 && sorted.filter((x) => !isMine(x)).length % 2 === 1)
+                ? 'sm:col-span-2'
+                : ''
+            }
+          >
             <Link
               to={`/league/${leagueId}/matchup/${m.id}`}
               className={
