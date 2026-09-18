@@ -104,9 +104,9 @@ export function LeagueHome() {
           and loudest */}
       {leaguePhase === 'regular_season' || leaguePhase === 'playoffs' ? (
         <>
+          <PrizesTeaser leagueId={league.id} />
           <WeekMatchups leagueId={league.id} myUserId={user?.id ?? null} />
           <StandingsSection leagueId={league.id} myUserId={user?.id ?? null} />
-          <PrizesTeaser leagueId={league.id} />
         </>
       ) : (
         <TeamsSection leagueId={league.id} isCommissioner={isCommissioner} myUserId={user?.id ?? null} />
@@ -430,7 +430,7 @@ function PrizesTeaser({ leagueId }: { leagueId: string }) {
   }, [apiFetch, leagueId])
   if (!pot?.configured) return null
   return (
-    <section className="mb-8">
+    <section className="mb-6">
       <Link
         to={`/league/${leagueId}/prizes`}
         className="flex items-center justify-between bg-mns-card hover:bg-mns-hover border border-gray-800 rounded-lg px-4 py-3 transition-colors"
