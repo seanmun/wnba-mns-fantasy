@@ -132,7 +132,10 @@ async function valueWallet(address: string) {
     lastUpdated: null as string | null,
     error: null as string | null,
   }
-  const key = process.env.ALCHEMY_API_KEY
+  // Server-side name first; the VITE_ spelling is accepted so a key
+  // entered under the browser prefix still works, but the key never
+  // belongs in client code.
+  const key = process.env.ALCHEMY_API_KEY ?? process.env.VITE_ALCHEMY_API_KEY
   if (!key) {
     out.error = 'ALCHEMY_API_KEY is not set on this project yet.'
     return out
