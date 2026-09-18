@@ -179,6 +179,31 @@ export function MatchupDetail() {
   // The viewer's team owns the LEFT column; a neutral viewer gets
   // away-at-home reading order.
   const meIsHome = myTeamId === matchup.homeTeamId
+  const meIn = myTeamId === matchup.homeTeamId || myTeamId === matchup.awayTeamId
+
+  const scoreBox = (side: { name: string; score: number }, isMe: boolean, leads: boolean) => (
+    <div
+      className={
+        'rounded-lg border bg-mns-card px-3 py-3 text-center ' +
+        (isMe ? 'border-[var(--color-accent)]' : 'border-[var(--color-border)]')
+      }
+    >
+      <div className="text-sm font-bold truncate">
+        {side.name}
+        {isMe ? (
+          <span className="ml-1 text-xs font-normal text-[var(--color-muted-foreground)]">(you)</span>
+        ) : null}
+      </div>
+      <div
+        className={
+          'text-5xl font-extrabold tabular-nums leading-tight' +
+          (leads ? ' text-[var(--color-accent)]' : '')
+        }
+      >
+        {side.score}
+      </div>
+    </div>
+  )
   const left = meIsHome
     ? { name: matchup.homeTeamName, score: matchup.homeScore, vals: matchup.result?.home, side: home }
     : { name: matchup.awayTeamName, score: matchup.awayScore, vals: matchup.result?.away, side: away }
@@ -195,18 +220,23 @@ export function MatchupDetail() {
           back={`/league/${leagueId}`}
           backLabel="League home"
           eyebrow={`Week ${matchup.matchupWeek} · ${matchup.status === 'final' ? 'Final' : matchup.status === 'live' ? 'Live' : 'Scheduled'}`}
-          title={
-            <span className="tabular-nums">
-              {left.name} {left.score} — {right.score} {right.name}
-            </span>
-          }
-          status={`Category score · ${matchup.startDate} to ${matchup.endDate}`}
+          title="Matchup"
+          status={`Categories won · ${matchup.startDate} to ${matchup.endDate}`}
         />
         <div className="absolute right-0 top-6">
           <Button variant="quiet" to={`/league/${leagueId}/scores`}>
             <Tv aria-hidden className="mr-1.5" /> Games
           </Button>
         </div>
+      </div>
+
+      {/* The scoreboard: two big boxes, categories won, leader lit. */}
+      <div className="mb-5 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+        {scoreBox(left, meIn, left.score > right.score)}
+        <span className="text-xl font-bold text-[var(--color-muted-foreground)]" aria-hidden>
+          –
+        </span>
+        {scoreBox(right, false, right.score > left.score)}
       </div>
 
       {cats.length > 0 && (
