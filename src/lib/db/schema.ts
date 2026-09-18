@@ -485,14 +485,13 @@ export const mnsTransactions = wnbaSchema.table(
   (t) => [index('idx_mns_transactions_league_time').on(t.leagueId, t.createdAt)]
 )
 
-// One waiver claim: one transaction per team per clearing day (the
-// unique key is what enforces it — resubmitting REPLACES the claim).
-// add_player_ids is an ORDERED preference list: the cap is on
-// transactions granted, not names listed, so being sniped costs the
-// team that player, not their whole move. Claims submitted today clear
-// at the first tick after 8am Eastern tomorrow, best record first
-// (the platform's waiver law, set in golf: priority rewards the top,
-// not the bottom).
+// One waiver claim = one move in a team's QUEUE for a clearing day
+// (rank orders the queue). Clearing runs like a snake draft: round one
+// takes every team's top claim in priority order, round two reverses,
+// and so on until the queues are empty — then the line re-forms from
+// tonight's grants (most recent grant to the back). add_player_ids is
+// still an ordered preference list within one claim, so being sniped
+// costs that player, not the slot.
 export const mnsWaiverClaims = wnbaSchema.table(
   'waiver_claims',
   {
@@ -505,6 +504,8 @@ export const mnsWaiverClaims = wnbaSchema.table(
       .references(() => mnsTeams.id, { onDelete: 'cascade' }),
     // Eastern date (YYYY-MM-DD) this claim clears on.
     clearsOn: text('clears_on').notNull(),
+    // Position in the team's queue for that day, 1-based.
+    rank: integer('rank').notNull().default(1),
     addPlayerIds: text('add_player_ids').array().notNull().default(sql`'{}'::text[]`),
     // Optional since rosters may run short (a straight drop leaves a
     // hole to fill add-only).
@@ -517,7 +518,7 @@ export const mnsWaiverClaims = wnbaSchema.table(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (t) => [
-    unique('mns_waiver_claims_team_day_key').on(t.teamId, t.clearsOn),
+    index('idx_mns_waiver_claims_team_day').on(t.teamId, t.clearsOn),
     index('idx_mns_waiver_claims_league_day').on(t.leagueId, t.clearsOn),
   ]
 )

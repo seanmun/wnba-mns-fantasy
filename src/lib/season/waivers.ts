@@ -12,8 +12,12 @@ import type { LeagueConfig } from '../../types/leagueConfig.js'
 // - Waiver priority is a rolling line: least recent GRANTED waiver
 //   move first; a grant sends you to the back. Never-claimed teams
 //   head the line (team creation order between them).
-// One claim per team per clearing day; the ordered preference list
-// means being sniped costs that player, not the whole move.
+// Teams queue as many claims as they like (rank orders the queue).
+// Clearing is a SNAKE: round one takes every team's top claim in line
+// order, round two reverses, back and forth until the queues empty —
+// then the line re-forms from tonight's grants, latest grant to the
+// back. Within one claim the preference list still means being sniped
+// costs that player, not the slot.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any
@@ -126,12 +130,29 @@ export async function processWaivers(
     )
   if (due.length === 0) return result
 
-  const order = await waiverPriority(db, leagueId)
-  const rank = new Map(order.map((id, i) => [id, i]))
-  due.sort(
-    (a: { teamId: string }, b: { teamId: string }) =>
-      (rank.get(a.teamId) ?? 99) - (rank.get(b.teamId) ?? 99)
-  )
+  // Each team's queue, in the order they ranked it.
+  const queues = new Map<string, typeof due>()
+  for (const c of due.sort(
+    (a: { rank: number; createdAt: Date }, b: { rank: number; createdAt: Date }) =>
+      a.rank - b.rank || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  )) {
+    const q = queues.get(c.teamId) ?? []
+    q.push(c)
+    queues.set(c.teamId, q)
+  }
+  const order = (await waiverPriority(db, leagueId)).filter((id) => queues.has(id))
+
+  // The snake: forward, then reverse, until every queue is empty.
+  const passes: typeof due = []
+  let round = 0
+  while ([...queues.values()].some((q) => q.length > 0)) {
+    const seq = round % 2 === 0 ? order : [...order].reverse()
+    for (const teamId of seq) {
+      const next = queues.get(teamId)?.shift()
+      if (next) passes.push(next)
+    }
+    round++
+  }
 
   const players = await db
     .select({ id: mnsPlayers.id, name: mnsPlayers.name, teamId: mnsPlayers.teamId, salary: mnsPlayers.salary })
@@ -142,7 +163,8 @@ export async function processWaivers(
   const hardCap = config.cap?.enabled ? config.cap.hardCap : null
 
   const activeSize = config.roster?.activeSize ?? 10
-  for (const claim of due) {
+  let grantSeq = 0
+  for (const claim of passes) {
     result.processed++
     const drop = claim.dropPlayerId
       ? (byId.get(claim.dropPlayerId) as { id: string; teamId: string | null; salary: number; name?: string } | undefined)
@@ -191,9 +213,13 @@ export async function processWaivers(
       // Keep the in-memory picture current so later claims this pass
       // see the grant — contention is decided HERE, in priority order.
       ;(byId.get(grantedId) as { teamId: string | null }).teamId = claim.teamId
+      // Stamp grants milliseconds apart in snake sequence, so the
+      // rolling line "resets" deterministically: tonight's later
+      // grants stand further back tomorrow.
+      const stamp = new Date(now.getTime() + grantSeq++)
       await db
         .update(mnsWaiverClaims)
-        .set({ status: 'granted', grantedPlayerId: grantedId, processedAt: now, updatedAt: now })
+        .set({ status: 'granted', grantedPlayerId: grantedId, processedAt: stamp, updatedAt: now })
         .where(eq(mnsWaiverClaims.id, claim.id))
       await logTransaction(db, leagueId, 'waiver', [claim.teamId], {
         added: (byId.get(grantedId) as { name?: string })?.name ?? grantedId,

@@ -19,17 +19,17 @@ import {
 import { seasonAverages } from '../../../src/lib/season/stats.js'
 import { logger } from '../../_logger.js'
 
-// The waiver wire. Claims submitted today clear tomorrow at 8am ET,
-// best record first. One transaction per team per clearing day —
-// resubmitting REPLACES the pending claim (the unique key guarantees
-// it). The preference list is ordered: being sniped costs that player,
-// not the whole move.
+// The waiver wire. Teams queue as many claims as they like; tomorrow
+// at 8am ET they clear as a SNAKE — round one takes each team's top
+// claim in priority order, round two reverses, until the queues empty.
 //
-// GET    /api/leagues/:id/waivers — my roster, free agents, my claim,
-//        the priority order (public — knowing you pick third is the
-//        point), and the transaction log
-// POST   { addPlayerIds: string[], dropPlayerId } — submit or replace
-// DELETE — withdraw my pending claim
+// GET    /api/leagues/:id/waivers — my roster, free agents, my queued
+//        claims, the priority order (public — knowing you pick third
+//        is the point), and the transaction log
+// POST   { addPlayerIds: string[], dropPlayerId? } — append a claim to
+//        my queue
+// PATCH  { claimIds: string[] } — reorder my queue
+// DELETE ?claimId= — withdraw one claim; without it, the whole queue
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userId = await verifyAuth(req)
   if (!userId) return res.status(401).json({ error: 'Unauthorized' })
@@ -61,18 +61,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const window = await faWindow()
       const order = await waiverPriority(db, leagueId)
-      const myClaim = mine
-        ? (
-            await db
-              .select()
-              .from(mnsWaiverClaims)
-              .where(
-                and(eq(mnsWaiverClaims.teamId, mine.teamId), eq(mnsWaiverClaims.status, 'pending'))
-              )
-              .orderBy(sql`${mnsWaiverClaims.createdAt} desc`)
-              .limit(1)
-          )[0] ?? null
-        : null
+      const myClaims = mine
+        ? await db
+            .select()
+            .from(mnsWaiverClaims)
+            .where(
+              and(eq(mnsWaiverClaims.teamId, mine.teamId), eq(mnsWaiverClaims.status, 'pending'))
+            )
+            .orderBy(mnsWaiverClaims.rank, mnsWaiverClaims.createdAt)
+        : []
 
       const log = await waiverLog(db, leagueId)
 
@@ -94,18 +91,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .filter((p) => p.teamId == null)
           .map((p) => ({ id: p.id, name: p.name, position: p.position, teamCode: p.teamCode, salary: p.salary, avg: avgByPlayer.get(p.id) ?? null }))
           .sort((a, b) => (b.avg?.ppg ?? 0) - (a.avg?.ppg ?? 0)),
-        myClaim: myClaim
-          ? {
-              id: myClaim.id,
-              clearsOn: myClaim.clearsOn,
-              addPlayerIds: myClaim.addPlayerIds,
-              addNames: (myClaim.addPlayerIds as string[]).map((id) => playerName.get(id) ?? id),
-              dropPlayerId: myClaim.dropPlayerId,
-              dropName: myClaim.dropPlayerId
-                ? playerName.get(myClaim.dropPlayerId) ?? myClaim.dropPlayerId
-                : null,
-            }
-          : null,
+        myClaims: myClaims.map((c: typeof mnsWaiverClaims.$inferSelect) => ({
+          id: c.id,
+          clearsOn: c.clearsOn,
+          addPlayerIds: c.addPlayerIds,
+          addNames: (c.addPlayerIds as string[]).map((id) => playerName.get(id) ?? id),
+          dropPlayerId: c.dropPlayerId,
+          dropName: c.dropPlayerId ? playerName.get(c.dropPlayerId) ?? c.dropPlayerId : null,
+        })),
         log: log.map((c: typeof mnsWaiverClaims.$inferSelect) => ({
           teamName: teamName.get(c.teamId) ?? c.teamId,
           status: c.status,
@@ -201,32 +194,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ ok: true, instant: true, added: took[0].name })
       }
 
+      // Append to the back of my queue for the clearing day.
       const clearsOn = nextClearDate()
+      const [last] = await db
+        .select({ max: sql<number>`coalesce(max(${mnsWaiverClaims.rank}), 0)` })
+        .from(mnsWaiverClaims)
+        .where(
+          and(eq(mnsWaiverClaims.teamId, mine.teamId), eq(mnsWaiverClaims.status, 'pending'))
+        )
       const [claim] = await db
         .insert(mnsWaiverClaims)
-        .values({ leagueId, teamId: mine.teamId, clearsOn, addPlayerIds, dropPlayerId })
-        .onConflictDoUpdate({
-          target: [mnsWaiverClaims.teamId, mnsWaiverClaims.clearsOn],
-          set: {
-            addPlayerIds,
-            dropPlayerId,
-            status: 'pending',
-            grantedPlayerId: null,
-            failureReason: null,
-            processedAt: null,
-            updatedAt: new Date(),
-          },
-        })
+        .values({ leagueId, teamId: mine.teamId, clearsOn, rank: (last?.max ?? 0) + 1, addPlayerIds, dropPlayerId })
         .returning()
-      return res.status(200).json({ ok: true, claim: { id: claim.id, clearsOn: claim.clearsOn } })
+      return res.status(200).json({ ok: true, claim: { id: claim.id, clearsOn: claim.clearsOn, rank: claim.rank } })
+    }
+
+    if (req.method === 'PATCH') {
+      const claimIds = (req.body?.claimIds ?? []) as string[]
+      if (!Array.isArray(claimIds) || claimIds.length === 0) {
+        return res.status(400).json({ error: 'claimIds is required.' })
+      }
+      // Ranks rewrite in the order given — only my own pending claims.
+      for (let i = 0; i < claimIds.length; i++) {
+        await db
+          .update(mnsWaiverClaims)
+          .set({ rank: i + 1, updatedAt: new Date() })
+          .where(
+            and(
+              eq(mnsWaiverClaims.id, claimIds[i]),
+              eq(mnsWaiverClaims.teamId, mine.teamId),
+              eq(mnsWaiverClaims.status, 'pending')
+            )
+          )
+      }
+      return res.status(200).json({ ok: true })
     }
 
     if (req.method === 'DELETE') {
+      const claimId = req.query.claimId ? String(req.query.claimId) : null
       await db
         .update(mnsWaiverClaims)
         .set({ status: 'withdrawn', updatedAt: new Date() })
         .where(
-          and(eq(mnsWaiverClaims.teamId, mine.teamId), eq(mnsWaiverClaims.status, 'pending'))
+          and(
+            eq(mnsWaiverClaims.teamId, mine.teamId),
+            eq(mnsWaiverClaims.status, 'pending'),
+            ...(claimId ? [eq(mnsWaiverClaims.id, claimId)] : [])
+          )
         )
       return res.status(200).json({ ok: true })
     }

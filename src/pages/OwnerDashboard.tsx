@@ -53,6 +53,7 @@ interface DayLine {
   fga: number
 }
 interface PendingClaim {
+  id: string
   addNames: string[]
   dropName: string | null
   clearsOn: string
@@ -192,7 +193,7 @@ export function OwnerDashboard() {
   const [day, setDay] = useState<LineupDay | null>(null)
   const [openRow, setOpenRow] = useState<string | null>(null)
   const [confirmDrop, setConfirmDrop] = useState<string | null>(null)
-  const [claim, setClaim] = useState<PendingClaim | null>(null)
+  const [claims, setClaims] = useState<PendingClaim[]>([])
 
   const load = () => {
     Promise.all([
@@ -228,12 +229,12 @@ export function OwnerDashboard() {
   const owned = team?.owners.some((o) => o.userId != null && o.userId === user?.id) ?? false
   useEffect(() => {
     if (!owned) {
-      setClaim(null)
+      setClaims([])
       return
     }
-    apiFetch<{ myClaim: PendingClaim | null }>(`/api/leagues/${leagueId}/waivers`)
-      .then((w) => setClaim(w.myClaim))
-      .catch(() => setClaim(null))
+    apiFetch<{ myClaims: PendingClaim[] }>(`/api/leagues/${leagueId}/waivers`)
+      .then((w) => setClaims(w.myClaims ?? []))
+      .catch(() => setClaims([]))
   }, [apiFetch, leagueId, owned])
 
   const moveSlot = async (playerId: string, slot: 'active' | 'bench' | 'ir' | 'drop') => {
@@ -330,23 +331,24 @@ export function OwnerDashboard() {
         <CapCard capUsed={capUsed} cap={currentLeague.config.cap} fees={currentLeague.config.fees} />
       ) : null}
 
-      {mine && claim ? (
+      {mine && claims.length > 0 ? (
         <div className="mb-4 rounded-lg border border-[var(--color-accent)] bg-mns-card p-3 text-sm">
-          <b>Waiver claim in</b> — clears {claim.clearsOn} at 8am ET
+          <b>Waiver queue in</b> — clears {claims[0].clearsOn} at 8am ET, snake order
           <ol className="mt-1 list-decimal list-inside tabular-nums">
-            {claim.addNames.map((n, i) => (
-              <li key={i}>{n}</li>
+            {claims.map((c) => (
+              <li key={c.id}>
+                {c.addNames.join(' → ')}
+                {c.dropName ? (
+                  <span className="text-[var(--color-muted-foreground)]"> · drop {c.dropName}</span>
+                ) : null}
+              </li>
             ))}
           </ol>
-          <p className="mt-1 text-[var(--color-muted-foreground)]">
-            {claim.dropName ? `Dropping ${claim.dropName}` : 'No drop — filling an open spot'} · you
-            get the first name still available.
-          </p>
           <Link
             to={`/league/${leagueId}/free-agents`}
             className="mt-1 inline-block font-bold text-[var(--color-accent)]"
           >
-            Change or withdraw →
+            Reorder or withdraw →
           </Link>
         </div>
       ) : null}

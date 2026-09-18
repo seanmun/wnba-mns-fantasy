@@ -32,7 +32,7 @@ interface WireState {
   priority: Array<{ position: number; teamName: string; isMe: boolean }>
   myRoster: WirePlayer[]
   freeAgents: WirePlayer[]
-  myClaim: { addNames: string[]; dropName: string | null; clearsOn: string } | null
+  myClaims: Array<{ id: string; addNames: string[]; dropName: string | null; clearsOn: string }>
   log: Array<{
     teamName: string
     status: string
@@ -84,20 +84,9 @@ export function FreeAgents() {
   }
 
   const open = state.window === 'open'
-  // Open window: one player at a time, the move is instant. Waivers:
-  // build the ordered wish list.
-  const toggleAdd = (id: string) =>
-    setAdds((a) =>
-      a.includes(id) ? a.filter((x) => x !== id) : open ? [id] : [...a, id]
-    )
-  const move = (i: number, d: number) =>
-    setAdds((a) => {
-      const t = i + d
-      if (t < 0 || t >= a.length) return a
-      const next = [...a]
-      ;[next[i], next[t]] = [next[t], next[i]]
-      return next
-    })
+  // One player per move, both gears: open executes now, waivers append
+  // a claim to your queue — the queue is where order lives.
+  const toggleAdd = (id: string) => setAdds((a) => (a.includes(id) ? [] : [id]))
 
   const submit = async () => {
     if (adds.length === 0) return
@@ -107,7 +96,7 @@ export function FreeAgents() {
         method: 'POST',
         body: JSON.stringify({ addPlayerIds: adds, dropPlayerId: drop ?? undefined }),
       })
-      toast.success(open ? 'Done — they\'re yours' : 'Claim in — clears tomorrow morning')
+      toast.success(open ? 'Done — they\'re yours' : 'Claim queued — clears tomorrow morning')
       setAdds([])
       setDrop(null)
       refresh()
@@ -118,11 +107,30 @@ export function FreeAgents() {
     }
   }
 
-  const withdraw = async () => {
+  const withdraw = async (claimId: string) => {
     setBusy(true)
     try {
-      await apiFetch(`/api/leagues/${leagueId}/waivers`, { method: 'DELETE' })
+      await apiFetch(`/api/leagues/${leagueId}/waivers?claimId=${claimId}`, { method: 'DELETE' })
       toast.success('Claim withdrawn')
+      refresh()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const reorder = async (i: number, d: number) => {
+    const t = i + d
+    if (t < 0 || t >= state.myClaims.length) return
+    const ids = state.myClaims.map((c) => c.id)
+    ;[ids[i], ids[t]] = [ids[t], ids[i]]
+    setBusy(true)
+    try {
+      await apiFetch(`/api/leagues/${leagueId}/waivers`, {
+        method: 'PATCH',
+        body: JSON.stringify({ claimIds: ids }),
+      })
       refresh()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed')
@@ -163,16 +171,26 @@ export function FreeAgents() {
         ))}
       </div>
 
-      {state.myClaim ? (
+      {state.myClaims.length > 0 ? (
         <div className="mb-4 rounded-lg border border-[var(--color-accent)] bg-mns-card p-3 text-sm">
-          <b>Pending claim</b> — add {state.myClaim.addNames.join(' → ')}
-          {state.myClaim.dropName ? <> · drop {state.myClaim.dropName}</> : null} · clears{' '}
-          {state.myClaim.clearsOn}
-          <div className="mt-2">
-            <Button variant="quiet" onClick={withdraw} disabled={busy}>
-              Withdraw
-            </Button>
-          </div>
+          <b>Your waiver queue</b> — clears {state.myClaims[0].clearsOn} at 8am ET. Rounds run
+          like a snake: everyone's first claim in waiver order, then back the other way.
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {state.myClaims.map((c, i) => (
+              <li key={c.id} className="flex items-center gap-2 tabular-nums">
+                <span className="font-bold">{i + 1}.</span>
+                <span className="flex-1 min-w-0 truncate">
+                  {c.addNames.join(' → ')}
+                  {c.dropName ? (
+                    <span className="text-[var(--color-muted-foreground)]"> · drop {c.dropName}</span>
+                  ) : null}
+                </span>
+                <button onClick={() => reorder(i, -1)} disabled={busy || i === 0} aria-label="Earlier" className="px-2 min-h-[2.25rem] disabled:opacity-30">↑</button>
+                <button onClick={() => reorder(i, 1)} disabled={busy || i === state.myClaims.length - 1} aria-label="Later" className="px-2 min-h-[2.25rem] disabled:opacity-30">↓</button>
+                <button onClick={() => withdraw(c.id)} disabled={busy} aria-label={`Withdraw ${c.addNames[0]}`} className="px-2 min-h-[2.25rem] text-[var(--color-pick-loss,#ff453a)]">✕</button>
+              </li>
+            ))}
+          </ul>
         </div>
       ) : null}
 
@@ -181,18 +199,6 @@ export function FreeAgents() {
           <span className="text-sm">
             <b>Adding:</b> {adds.map(nameOf).join(' → ')}
           </span>
-          {adds.length > 1 ? (
-            <span className="text-xs text-[var(--color-muted-foreground)]">
-              Order matters — you get the first name still available.{' '}
-              {adds.map((id, i) => (
-                <span key={id} className="inline-flex items-center gap-0.5 mr-2">
-                  {i + 1}.{nameOf(id)}
-                  <button onClick={() => move(i, -1)} aria-label="Earlier" className="px-1 min-h-[2rem]">↑</button>
-                  <button onClick={() => move(i, 1)} aria-label="Later" className="px-1 min-h-[2rem]">↓</button>
-                </span>
-              ))}
-            </span>
-          ) : null}
           <span className="text-sm font-bold">
             {drop
               ? 'Dropping:'
@@ -222,7 +228,7 @@ export function FreeAgents() {
               onClick={submit}
               disabled={busy || (!drop && state.myRoster.length >= state.activeSize)}
             >
-              {busy ? 'Working…' : open ? 'Add now' : 'Submit claim'}
+              {busy ? 'Working…' : open ? 'Add now' : 'Queue claim'}
             </Button>
             <Button variant="quiet" onClick={() => { setAdds([]); setDrop(null) }}>
               Cancel
