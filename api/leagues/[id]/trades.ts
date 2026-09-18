@@ -3,6 +3,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { verifyAuth } from '../../_middleware.js'
 import { db } from '../../_db.js'
 import {
+  mnsFuturePicks,
   mnsLeagues,
   mnsPlayers,
   mnsTeamOwners,
@@ -16,14 +17,17 @@ import { logger } from '../../_logger.js'
 import type { TradeAsset } from '../../../src/types/trade.js'
 import type { LeagueConfig } from '../../../src/types/leagueConfig.js'
 
-// Trades, the simplest honest version: two teams, players only,
-// propose → accept/reject → executed immediately on accept, validated
-// at ACCEPT time (rosters move between propose and accept — waivers,
-// other trades — so acceptance revalidates everything and refuses
-// stale deals rather than executing fiction).
+// Trades: two teams, players AND future rookie draft picks, propose →
+// accept/reject → executed immediately on accept, validated at ACCEPT
+// time (rosters and pick ownership move between propose and accept —
+// waivers, other trades — so acceptance revalidates everything and
+// refuses stale deals rather than executing fiction). A pick's
+// identity is (season, round, original team); ownership lives in
+// future_picks, absent row = still with its original team.
 //
-// GET  /api/leagues/:id/trades — proposals involving my team + league log
-// POST { action: 'propose', toTeamId, givePlayerIds, getPlayerIds, note? }
+// GET  /api/leagues/:id/trades — proposals + the tradable pick board
+// POST { action: 'propose', toTeamId, givePlayerIds, getPlayerIds,
+//        givePickIds?, getPickIds?, note? }
 // POST { action: 'respond', proposalId, accept: boolean }
 // POST { action: 'cancel', proposalId }
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -42,6 +46,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .where(and(eq(mnsTeams.leagueId, leagueId), eq(mnsTeamOwners.userId, userId)))
     .limit(1)
 
+  // The pick board: every future rookie pick for the next three
+  // drafts, owned by its original team unless a future_picks row says
+  // otherwise. Pick ids are stable: pick:<year>:r<round>:<origTeamId>.
+  const pickBoard = async () => {
+    const teams = await db.select().from(mnsTeams).where(eq(mnsTeams.leagueId, leagueId))
+    const teamName = new Map(teams.map((t) => [t.id, t.name]))
+    const overrides = await db
+      .select()
+      .from(mnsFuturePicks)
+      .where(eq(mnsFuturePicks.leagueId, leagueId))
+    const ownerOf = new Map(
+      overrides.map((r) => [`${r.seasonYear}:${r.round}:${r.originalTeamId}`, r.currentTeamId])
+    )
+    const rounds = config.draft?.rookieRounds ?? 3
+    const picks: Array<{
+      id: string
+      seasonYear: number
+      round: number
+      originalTeamId: string
+      ownerTeamId: string
+      displayName: string
+    }> = []
+    for (let y = league.seasonYear + 1; y <= league.seasonYear + 3; y++) {
+      for (let r = 1; r <= rounds; r++) {
+        for (const t of teams) {
+          const owner = ownerOf.get(`${y}:${r}:${t.id}`) ?? t.id
+          picks.push({
+            id: `pick:${y}:r${r}:${t.id}`,
+            seasonYear: y,
+            round: r,
+            originalTeamId: t.id,
+            ownerTeamId: owner,
+            displayName: `${y} Round ${r} pick (via ${teamName.get(t.id) ?? t.id})`,
+          })
+        }
+      }
+    }
+    return picks
+  }
+
   try {
     if (req.method === 'GET') {
       const teams = await db.select().from(mnsTeams).where(eq(mnsTeams.leagueId, leagueId))
@@ -55,6 +99,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({
         myTeamId: mine?.teamId ?? null,
         deadlinePassed: isTradeDeadlinePassed(config),
+        picks: await pickBoard(),
         proposals: proposals.map((p) => ({
           id: p.id,
           status: p.status,
@@ -87,11 +132,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const toTeamId = String(req.body?.toTeamId ?? '')
       const givePlayerIds = (req.body?.givePlayerIds ?? []) as string[]
       const getPlayerIds = (req.body?.getPlayerIds ?? []) as string[]
+      const givePickIds = (req.body?.givePickIds ?? []) as string[]
+      const getPickIds = (req.body?.getPickIds ?? []) as string[]
       if (!toTeamId || toTeamId === mine.teamId) {
         return res.status(400).json({ error: 'Pick another team to trade with.' })
       }
-      if (givePlayerIds.length === 0 || getPlayerIds.length === 0) {
-        return res.status(400).json({ error: 'A trade needs players on both sides.' })
+      if (givePlayerIds.length + givePickIds.length === 0 || getPlayerIds.length + getPickIds.length === 0) {
+        return res.status(400).json({ error: 'A trade needs something on both sides.' })
       }
       const players = await db
         .select()
@@ -109,6 +156,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Every player must be on the team offering them.' })
       }
 
+      const board = await pickBoard()
+      const pickById = new Map(board.map((p) => [p.id, p]))
+      const wrongPickGive = givePickIds.filter((id) => pickById.get(id)?.ownerTeamId !== mine.teamId)
+      const wrongPickGet = getPickIds.filter((id) => pickById.get(id)?.ownerTeamId !== toTeamId)
+      if (wrongPickGive.length || wrongPickGet.length) {
+        return res.status(400).json({ error: 'Every pick must belong to the team offering it.' })
+      }
+
       const assets: TradeAsset[] = [
         ...givePlayerIds.map((id) => ({
           type: 'player' as const,
@@ -123,6 +178,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           id,
           displayName: byId.get(id)!.name,
           salary: byId.get(id)!.salary ?? undefined,
+          fromTeamId: toTeamId,
+          toTeamId: mine.teamId,
+        })),
+        ...givePickIds.map((id) => ({
+          type: 'pick' as const,
+          id,
+          displayName: pickById.get(id)!.displayName,
+          fromTeamId: mine.teamId,
+          toTeamId,
+        })),
+        ...getPickIds.map((id) => ({
+          type: 'pick' as const,
+          id,
+          displayName: pickById.get(id)!.displayName,
           fromTeamId: toTeamId,
           toTeamId: mine.teamId,
         })),
@@ -196,13 +265,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // have moved someone since. Refuse stale deals; never execute
       // fiction.
       const assets = proposal.assets as TradeAsset[]
-      const ids = assets.map((a) => a.id)
-      const players = await db
-        .select({ id: mnsPlayers.id, teamId: mnsPlayers.teamId, salary: mnsPlayers.salary })
-        .from(mnsPlayers)
-        .where(and(eq(mnsPlayers.leagueId, leagueId), inArray(mnsPlayers.id, ids)))
+      const playerAssets = assets.filter((a) => a.type === 'player')
+      const pickAssets = assets.filter((a) => a.type !== 'player')
+      const ids = playerAssets.map((a) => a.id)
+      const players = ids.length
+        ? await db
+            .select({ id: mnsPlayers.id, teamId: mnsPlayers.teamId, salary: mnsPlayers.salary })
+            .from(mnsPlayers)
+            .where(and(eq(mnsPlayers.leagueId, leagueId), inArray(mnsPlayers.id, ids)))
+        : []
       const byId = new Map(players.map((p) => [p.id, p]))
-      const stale = assets.filter((a) => byId.get(a.id)?.teamId !== a.fromTeamId)
+      const board = pickAssets.length ? await pickBoard() : []
+      const pickOwner = new Map(board.map((p) => [p.id, p.ownerTeamId]))
+      const stale = [
+        ...playerAssets.filter((a) => byId.get(a.id)?.teamId !== a.fromTeamId),
+        ...pickAssets.filter((a) => pickOwner.get(a.id) !== a.fromTeamId),
+      ]
       if (stale.length) {
         await db
           .update(mnsTradeProposals)
@@ -231,11 +309,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      for (const a of assets) {
+      for (const a of playerAssets) {
         await db
           .update(mnsPlayers)
           .set({ teamId: a.toTeamId, slot: 'active' })
           .where(and(eq(mnsPlayers.leagueId, leagueId), eq(mnsPlayers.id, a.id)))
+      }
+      for (const a of pickAssets) {
+        // pick:<year>:r<round>:<originalTeamId> → materialize (or
+        // update) the ownership row.
+        const m = a.id.match(/^pick:(\d+):r(\d+):(.+)$/)
+        if (!m) continue
+        const [, y, r, orig] = m
+        await db
+          .insert(mnsFuturePicks)
+          .values({
+            id: `${leagueId}_${y}_r${r}_${orig}`,
+            leagueId,
+            seasonYear: Number(y),
+            round: Number(r),
+            originalTeamId: orig,
+            currentTeamId: a.toTeamId,
+          })
+          .onConflictDoUpdate({
+            target: [
+              mnsFuturePicks.leagueId,
+              mnsFuturePicks.seasonYear,
+              mnsFuturePicks.round,
+              mnsFuturePicks.originalTeamId,
+            ],
+            set: { currentTeamId: a.toTeamId, updatedAt: new Date() },
+          })
       }
       await db
         .update(mnsTradeProposals)

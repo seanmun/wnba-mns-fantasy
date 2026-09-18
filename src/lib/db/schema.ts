@@ -355,6 +355,35 @@ export const mnsPickAssignments = wnbaSchema.table(
   ]
 )
 
+// FUTURE pick ownership, lazily materialized: a pick with no row here
+// still belongs to its original team. A row exists only once a pick
+// has been traded (or re-traded). Keyed by (season, round, original
+// team) — the identity a pick keeps no matter how many hands it
+// passes through.
+export const mnsFuturePicks = wnbaSchema.table(
+  'future_picks',
+  {
+    id: text('id').primaryKey(),
+    leagueId: text('league_id')
+      .notNull()
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
+    seasonYear: integer('season_year').notNull(),
+    round: integer('round').notNull(),
+    originalTeamId: text('original_team_id')
+      .notNull()
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
+    currentTeamId: text('current_team_id')
+      .notNull()
+      .references(() => mnsTeams.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => [
+    unique('mns_future_picks_identity_key').on(t.leagueId, t.seasonYear, t.round, t.originalTeamId),
+    index('idx_mns_future_picks_owner').on(t.currentTeamId),
+  ]
+)
+
 export const mnsRookieDraftPicks = wnbaSchema.table(
   'rookie_draft_picks',
   {

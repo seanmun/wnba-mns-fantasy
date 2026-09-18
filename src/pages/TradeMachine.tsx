@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useApi } from '../hooks/useApi'
 import { Button, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
+import { useLeague } from '../contexts/LeagueContext'
 
 interface TeamRow {
   id: string
@@ -16,6 +17,14 @@ interface RosterPlayer {
   teamCode: string | null
   salary: number | null
   teamId: string | null
+}
+interface PickAsset {
+  id: string
+  seasonYear: number
+  round: number
+  originalTeamId: string
+  ownerTeamId: string
+  displayName: string
 }
 interface Proposal {
   id: string
@@ -38,18 +47,21 @@ export function TradeMachine() {
   const { apiFetch } = useApi()
   const [teams, setTeams] = useState<TeamRow[] | null>(null)
   const [players, setPlayers] = useState<RosterPlayer[] | null>(null)
-  const [trades, setTrades] = useState<{ myTeamId: string | null; deadlinePassed: boolean; proposals: Proposal[] } | null>(null)
+  const { currentLeague } = useLeague()
+  const [trades, setTrades] = useState<{ myTeamId: string | null; deadlinePassed: boolean; picks: PickAsset[]; proposals: Proposal[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [withTeam, setWithTeam] = useState<string | null>(null)
   const [give, setGive] = useState<string[]>([])
   const [get, setGet] = useState<string[]>([])
+  const [givePicks, setGivePicks] = useState<string[]>([])
+  const [getPicks, setGetPicks] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
 
   const refresh = () => {
     Promise.all([
       apiFetch<TeamRow[]>(`/api/leagues/${leagueId}/teams`),
       apiFetch<RosterPlayer[]>(`/api/leagues/${leagueId}/players`),
-      apiFetch<{ myTeamId: string | null; deadlinePassed: boolean; proposals: Proposal[] }>(`/api/leagues/${leagueId}/trades`),
+      apiFetch<{ myTeamId: string | null; deadlinePassed: boolean; picks: PickAsset[]; proposals: Proposal[] }>(`/api/leagues/${leagueId}/trades`),
     ])
       .then(([t, p, tr]) => {
         setTeams(t)
@@ -80,6 +92,8 @@ export function TradeMachine() {
       toast.success(okMsg)
       setGive([])
       setGet([])
+      setGivePicks([])
+      setGetPicks([])
       setWithTeam(null)
       refresh()
     } catch (e) {
@@ -164,6 +178,7 @@ export function TradeMachine() {
                   onClick={() => {
                     setWithTeam(withTeam === t.id ? null : t.id)
                     setGet([])
+                    setGetPicks([])
                   }}
                   className={
                     'text-sm rounded-full px-3 py-1.5 border min-h-[2.5rem] ' +
@@ -181,10 +196,10 @@ export function TradeMachine() {
             <div className="grid sm:grid-cols-2 gap-4">
               {(
                 [
-                  ['You send', myTeamId, give, (id: string) => toggle(give, setGive, id)],
-                  ['You receive', withTeam, get, (id: string) => toggle(get, setGet, id)],
+                  ['You send', myTeamId, give, (id: string) => toggle(give, setGive, id), givePicks, (id: string) => toggle(givePicks, setGivePicks, id)],
+                  ['You receive', withTeam, get, (id: string) => toggle(get, setGet, id), getPicks, (id: string) => toggle(getPicks, setGetPicks, id)],
                 ] as const
-              ).map(([label, teamId, sel, onToggle]) => (
+              ).map(([label, teamId, sel, onToggle, selPicks, onTogglePick]) => (
                 <div key={label}>
                   <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-1.5">
                     {label}
@@ -205,6 +220,28 @@ export function TradeMachine() {
                       </li>
                     ))}
                   </ul>
+                  <h4 className="mt-3 mb-1.5 text-xs font-bold uppercase tracking-wider text-[var(--color-muted-foreground)]">
+                    Future picks
+                  </h4>
+                  <div className="flex flex-wrap gap-1.5">
+                    {trades.picks
+                      .filter((pk) => pk.ownerTeamId === teamId)
+                      .map((pk) => (
+                        <button
+                          key={pk.id}
+                          onClick={() => onTogglePick(pk.id)}
+                          aria-pressed={selPicks.includes(pk.id)}
+                          className={
+                            'text-xs rounded-full px-2.5 py-1.5 border min-h-[2.5rem] tabular-nums ' +
+                            (selPicks.includes(pk.id)
+                              ? 'border-[var(--color-accent)] text-[var(--color-accent)] font-bold'
+                              : 'border-[var(--color-border)] text-[var(--color-muted-foreground)]')
+                          }
+                        >
+                          {pk.displayName.replace(' pick', '')}
+                        </button>
+                      ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -212,14 +249,38 @@ export function TradeMachine() {
             <p className="text-sm text-[var(--color-muted-foreground)]">Pick a team to deal with.</p>
           )}
 
-          {withTeam && give.length > 0 && get.length > 0 ? (
+          {withTeam && (give.length + givePicks.length > 0 || get.length + getPicks.length > 0) ? (
+            <CapCalculator
+              players={players}
+              myTeamId={myTeamId}
+              withTeam={withTeam}
+              withTeamName={teams.find((t) => t.id === withTeam)?.name ?? ''}
+              give={give}
+              get={get}
+              cap={currentLeague?.config.cap ?? null}
+            />
+          ) : null}
+
+          {withTeam && give.length + givePicks.length > 0 && get.length + getPicks.length > 0 ? (
             <div className="mt-3">
               <Button
                 full
                 disabled={busy}
-                onClick={() => act({ action: 'propose', toTeamId: withTeam, givePlayerIds: give, getPlayerIds: get }, 'Proposal sent')}
+                onClick={() =>
+                  act(
+                    {
+                      action: 'propose',
+                      toTeamId: withTeam,
+                      givePlayerIds: give,
+                      getPlayerIds: get,
+                      givePickIds: givePicks,
+                      getPickIds: getPicks,
+                    },
+                    'Proposal sent'
+                  )
+                }
               >
-                {busy ? 'Sending…' : `Propose: ${give.length} for ${get.length}`}
+                {busy ? 'Sending…' : `Propose: ${give.length + givePicks.length} for ${get.length + getPicks.length}`}
               </Button>
             </div>
           ) : null}
@@ -247,6 +308,76 @@ export function TradeMachine() {
           </ul>
         </>
       ) : null}
+    </div>
+  )
+}
+
+// The salary repercussions, both sides, live as the deal is built:
+// cap now → cap after, the swing, and where that lands against the
+// aprons and hard cap. Picks carry no salary.
+function CapCalculator({
+  players,
+  myTeamId,
+  withTeam,
+  withTeamName,
+  give,
+  get,
+  cap,
+}: {
+  players: RosterPlayer[]
+  myTeamId: string | null
+  withTeam: string
+  withTeamName: string
+  give: string[]
+  get: string[]
+  cap: { floor: number; firstApron: number; secondApron: number; hardCap: number } | null
+}) {
+  const M = 1_000_000
+  const fmtM = (n: number) => `$${(n / M).toFixed(2)}M`
+  const salaryOf = (ids: string[]) =>
+    ids.reduce((n, id) => n + (players.find((p) => p.id === id)?.salary ?? 0), 0)
+  const rosterSalary = (teamId: string | null) =>
+    players.filter((p) => p.teamId === teamId).reduce((n, p) => n + (p.salary ?? 0), 0)
+
+  const sides = [
+    { label: 'You', teamId: myTeamId, out: salaryOf(give), inn: salaryOf(get) },
+    { label: withTeamName, teamId: withTeam, out: salaryOf(get), inn: salaryOf(give) },
+  ]
+  return (
+    <div className="mt-4 grid sm:grid-cols-2 gap-2">
+      {sides.map((side) => {
+        const current = rosterSalary(side.teamId)
+        const after = current - side.out + side.inn
+        const delta = after - current
+        const status = !cap
+          ? null
+          : after > cap.hardCap
+            ? { text: `${fmtM(after - cap.hardCap)} OVER the hard cap — this deal can't execute`, color: 'var(--color-pick-loss, #ff453a)' }
+            : after > cap.secondApron
+              ? { text: `over the 2nd apron · ${fmtM(cap.hardCap - after)} under the hard cap`, color: 'var(--color-pick-pending, #00e5ff)' }
+              : after > cap.firstApron
+                ? { text: `over the 1st apron · ${fmtM(cap.hardCap - after)} under the hard cap`, color: 'var(--color-key, #ffb000)' }
+                : after < cap.floor
+                  ? { text: `below the floor (${fmtM(cap.floor)})`, color: 'var(--color-muted-foreground)' }
+                  : { text: `${fmtM(cap.hardCap - after)} of room · under both aprons`, color: 'var(--color-accent)' }
+        return (
+          <div key={side.label} className="rounded-lg border border-[var(--color-border)] bg-mns-card p-3 text-sm tabular-nums">
+            <b className="block truncate">{side.label}</b>
+            <span className="block">
+              {fmtM(current)} → <b>{fmtM(after)}</b>{' '}
+              <span className={delta > 0 ? 'text-[var(--color-key,#ffb000)]' : 'text-[var(--color-accent)]'}>
+                ({delta >= 0 ? '+' : ''}
+                {fmtM(delta)})
+              </span>
+            </span>
+            {status ? (
+              <span className="block text-xs mt-0.5" style={{ color: status.color }}>
+                {status.text}
+              </span>
+            ) : null}
+          </div>
+        )
+      })}
     </div>
   )
 }
