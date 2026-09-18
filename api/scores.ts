@@ -80,6 +80,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           competitors?: Array<{
             homeAway: string
             score?: string
+            linescores?: Array<{ value?: number }>
             team: { abbreviation: string; shortDisplayName?: string }
           }>
         }>
@@ -90,10 +91,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const comps = e.competitions?.[0]?.competitors ?? []
       const pick = (ha: string) => {
         const c = comps.find((x) => x.homeAway === ha)
+        // ESPN sometimes zeroes the aggregate score while the quarter
+        // linescores stay truthful (seen live 2026-09-17) — trust the
+        // quarters when the total reads 0.
+        let score = Number(c?.score ?? 0)
+        if (!score && c?.linescores?.length) {
+          score = c.linescores.reduce((n, l) => n + (l.value ?? 0), 0)
+        }
         return {
           code: c ? CODE_ALIAS[c.team.abbreviation] ?? c.team.abbreviation : '',
           name: c?.team.shortDisplayName ?? '',
-          score: Number(c?.score ?? 0),
+          score,
         }
       }
       return {
