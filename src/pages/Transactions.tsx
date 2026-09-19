@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
-import { Chip, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
+import { Chip, EmptyState, PageHeader, Skeleton } from '../ui/components'
 
 interface Txn {
   id: string
@@ -10,7 +10,7 @@ interface Txn {
   detail: {
     added?: string
     dropped?: string
-    assets?: Array<{ name: string; toTeamId: string }>
+    assets?: Array<{ name: string; toTeamName: string | null; fromTeamName: string | null }>
   }
   at: string
 }
@@ -76,31 +76,61 @@ export function Transactions() {
           Pickups, waiver claims and trades will show here the moment they happen.
         </EmptyState>
       ) : (
-        <ul className="flex flex-col gap-1.5">
-          {rows.map((t) => (
-            <li key={t.id}>
-              <ListRow
-                title={
-                  <>
+        <ul className="flex flex-col gap-2">
+          {rows.map((t) => {
+            // A trade reads by RECEIVER: each side, everything it got.
+            const byReceiver = new Map<string, string[]>()
+            for (const a of t.detail.assets ?? []) {
+              const k = a.toTeamName ?? '?'
+              byReceiver.set(k, [...(byReceiver.get(k) ?? []), a.name])
+            }
+            return (
+              <li
+                key={t.id}
+                className="rounded-lg border border-[var(--color-border)] bg-mns-card px-4 py-3"
+              >
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="font-bold">
                     {t.teamNames.join(' ↔ ')}
                     <span className="ml-1.5">
                       <Chip tone={t.type === 'trade' ? 'key' : 'accent'}>{TYPE_LABEL[t.type]}</Chip>
                     </span>
-                  </>
-                }
-                sub={
-                  t.type === 'trade'
-                    ? (t.detail.assets ?? []).map((a) => a.name).join(', ')
-                    : `Added ${t.detail.added ?? '?'} · dropped ${t.detail.dropped ?? '?'}`
-                }
-                end={
-                  <span className="text-[0.78rem] text-[var(--color-muted-foreground)] tabular-nums">
+                  </span>
+                  <span className="shrink-0 text-[0.78rem] text-[var(--color-muted-foreground)] tabular-nums">
                     {when(t.at)}
                   </span>
-                }
-              />
-            </li>
-          ))}
+                </div>
+                {t.type === 'trade' ? (
+                  <div className="mt-1.5 flex flex-col gap-1 text-sm">
+                    {[...byReceiver.entries()].map(([team, names]) => (
+                      <div key={team}>
+                        <b>{team}</b> receives{' '}
+                        <span className="text-[var(--color-accent)]">{names.join(', ')}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-1.5 flex flex-col gap-0.5 text-sm">
+                    {t.detail.added ? (
+                      <span>
+                        <b className="text-[var(--color-accent)]">＋</b> Added{' '}
+                        <b>{t.detail.added}</b>
+                        {t.type === 'waiver' ? (
+                          <span className="text-[var(--color-muted-foreground)]"> off waivers</span>
+                        ) : null}
+                      </span>
+                    ) : null}
+                    {t.detail.dropped ? (
+                      <span>
+                        <b className="text-[var(--color-pick-loss,#ff453a)]">－</b> Dropped{' '}
+                        <b>{t.detail.dropped}</b>
+                      </span>
+                    ) : null}
+                  </div>
+                )}
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>

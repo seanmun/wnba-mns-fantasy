@@ -23,13 +23,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .orderBy(sql`${mnsTransactions.createdAt} desc`)
       .limit(100)
     return res.status(200).json(
-      rows.map((r) => ({
-        id: r.id,
-        type: r.type,
-        teamNames: (r.teamIds as string[]).map((t) => teamName.get(t) ?? t),
-        detail: r.detail,
-        at: r.createdAt,
-      }))
+      rows.map((r) => {
+        const detail = r.detail as Record<string, unknown>
+        // Trades: name the receiving team on every asset so the page
+        // can say who got what, not just list names.
+        const assets = Array.isArray(detail.assets)
+          ? (detail.assets as Array<{ name: string; fromTeamId?: string; toTeamId?: string }>).map(
+              (a) => ({
+                ...a,
+                toTeamName: a.toTeamId ? teamName.get(a.toTeamId) ?? a.toTeamId : null,
+                fromTeamName: a.fromTeamId ? teamName.get(a.fromTeamId) ?? a.fromTeamId : null,
+              })
+            )
+          : undefined
+        return {
+          id: r.id,
+          type: r.type,
+          teamNames: (r.teamIds as string[]).map((t) => teamName.get(t) ?? t),
+          detail: assets ? { ...detail, assets } : detail,
+          at: r.createdAt,
+        }
+      })
     )
   } catch (err) {
     logger.error('transactions endpoint failed', {
