@@ -337,13 +337,21 @@ export function OwnerDashboard() {
           back={`/league/${leagueId}`}
           backLabel="League home"
           eyebrow={mine ? 'My team' : 'Team'}
-          title={team.name}
+          title={
+            <span className="flex items-center gap-3">
+              {team.logo ? (
+                <img
+                  src={team.logo}
+                  alt=""
+                  className="w-14 h-14 rounded-xl object-cover shrink-0"
+                />
+              ) : null}
+              <span className="min-w-0">{team.name}</span>
+            </span>
+          }
           status={`${team.owners.map((o) => o.displayName ?? o.email.split('@')[0]).join(' · ') || 'No owner yet'} · ${roster.length} players · $${capUsed.toLocaleString()} cap`}
         />
         <div className="absolute right-0 top-6 flex items-center gap-2">
-          {team.logo ? (
-            <img src={team.logo} alt="" className="w-12 h-12 rounded-full object-cover" />
-          ) : null}
           {mine ? (
             <Button
               variant="quiet"
