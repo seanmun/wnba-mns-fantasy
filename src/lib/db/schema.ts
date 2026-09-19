@@ -107,6 +107,10 @@ export const mnsTeams = wnbaSchema.table(
       .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     abbrev: text('abbrev').notNull(),
+    // Small data-URL image (client resizes to ~256px before upload) —
+    // no blob store in the stack, and a 4..12-team league's logos fit
+    // in the row just fine.
+    logo: text('logo'),
     telegramUsername: text('telegram_username'),
     capAdjustments: jsonb('cap_adjustments')
       .$type<TeamCapAdjustments>()

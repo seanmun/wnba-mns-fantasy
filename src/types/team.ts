@@ -7,6 +7,7 @@ export interface Team {
   leagueId: string
   name: string
   abbrev: string
+  logo: string | null
   telegramUsername: string | null
   capAdjustments: TeamCapAdjustments
   banners: number[]

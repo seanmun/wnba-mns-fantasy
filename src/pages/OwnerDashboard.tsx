@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, EllipsisVertical, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, EllipsisVertical, Settings, X } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
 import { Button, Chip, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
 import { useLeague } from '../contexts/LeagueContext'
@@ -15,6 +15,7 @@ interface OwnerInfo {
 interface TeamInfo {
   id: string
   name: string
+  logo?: string | null
   owners: OwnerInfo[]
   picks?: Array<{
     id: string
@@ -201,6 +202,7 @@ export function OwnerDashboard() {
   const [openRow, setOpenRow] = useState<string | null>(null)
   const [confirmDrop, setConfirmDrop] = useState<string | null>(null)
   const [claims, setClaims] = useState<PendingClaim[]>([])
+  const [showSettings, setShowSettings] = useState(false)
 
   const load = () => {
     Promise.all([
@@ -327,13 +329,34 @@ export function OwnerDashboard() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-2 pb-24">
-      <PageHeader
-        back={`/league/${leagueId}`}
-        backLabel="League home"
-        eyebrow={mine ? 'My team' : 'Team'}
-        title={team.name}
-        status={`${team.owners.map((o) => o.displayName ?? o.email.split('@')[0]).join(' · ') || 'No owner yet'} · ${roster.length} players · $${capUsed.toLocaleString()} cap`}
-      />
+      <div className="relative">
+        <PageHeader
+          back={`/league/${leagueId}`}
+          backLabel="League home"
+          eyebrow={mine ? 'My team' : 'Team'}
+          title={team.name}
+          status={`${team.owners.map((o) => o.displayName ?? o.email.split('@')[0]).join(' · ') || 'No owner yet'} · ${roster.length} players · $${capUsed.toLocaleString()} cap`}
+        />
+        <div className="absolute right-0 top-6 flex items-center gap-2">
+          {team.logo ? (
+            <img src={team.logo} alt="" className="w-12 h-12 rounded-full object-cover" />
+          ) : null}
+          {mine ? (
+            <Button
+              variant="quiet"
+              aria-label="Team settings"
+              aria-expanded={showSettings}
+              onClick={() => setShowSettings(!showSettings)}
+            >
+              <Settings aria-hidden />
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      {mine && showSettings ? (
+        <TeamSettings leagueId={leagueId} team={team} onSaved={() => { setShowSettings(false); load() }} />
+      ) : null}
       {currentLeague?.config.cap?.enabled ? (
         <CapCard capUsed={capUsed} cap={currentLeague.config.cap} fees={currentLeague.config.fees} />
       ) : null}
@@ -522,6 +545,149 @@ export function OwnerDashboard() {
           ) : null}
         </section>
       ) : null}
+    </div>
+  )
+}
+
+// Your team, your look: rename it, give it a logo, add a co-owner.
+// The logo is resized in the browser to a small data URL — no file
+// storage to configure, and 256px is plenty for a crest.
+function TeamSettings({
+  leagueId,
+  team,
+  onSaved,
+}: {
+  leagueId: string
+  team: TeamInfo
+  onSaved: () => void
+}) {
+  const { apiFetch } = useApi()
+  const [name, setName] = useState(team.name)
+  const [logo, setLogo] = useState<string | null | undefined>(undefined) // undefined = unchanged
+  const [coOwner, setCoOwner] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const pickFile = (file: File | null) => {
+    if (!file) return
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      const max = 256
+      const scale = Math.min(1, max / Math.max(img.width, img.height))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(img.width * scale)
+      canvas.height = Math.round(img.height * scale)
+      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+      URL.revokeObjectURL(url)
+      // WebP keeps transparency small; a browser that can't encode it
+      // falls back to PNG.
+      let data = canvas.toDataURL('image/webp', 0.85)
+      if (!data.startsWith('data:image/webp')) data = canvas.toDataURL('image/png')
+      if (data.length > 300_000) {
+        toast.error('That image is too detailed — try a simpler one.')
+        return
+      }
+      setLogo(data)
+    }
+    img.onerror = () => toast.error('Could not read that image.')
+    img.src = url
+  }
+
+  const save = async (body: Record<string, unknown>, okMsg: string) => {
+    setSaving(true)
+    try {
+      await apiFetch(`/api/leagues/${leagueId}/teams`, {
+        method: 'PATCH',
+        body: JSON.stringify({ teamId: team.id, ...body }),
+      })
+      toast.success(okMsg)
+      onSaved()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const preview = logo === undefined ? team.logo : logo
+
+  return (
+    <div className="mb-5 rounded-lg border border-[var(--color-border-interactive)] bg-mns-card p-4 flex flex-col gap-4 text-sm">
+      <div>
+        <label className="block text-xs font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-1.5" htmlFor="team-name">
+          Team name
+        </label>
+        <div className="flex gap-2">
+          <input
+            id="team-name"
+            value={name}
+            maxLength={60}
+            onChange={(e) => setName(e.target.value)}
+            className="flex-1 min-w-0 px-3 py-2 min-h-[3rem] rounded-lg bg-[var(--color-background)] border border-[var(--color-border-interactive)] text-[var(--color-foreground)] focus:outline-none focus:border-[var(--color-accent)]"
+          />
+          <Button onClick={() => save({ name }, 'Team renamed')} disabled={saving || !name.trim() || name.trim() === team.name}>
+            Save
+          </Button>
+        </div>
+      </div>
+
+      <div>
+        <span className="block text-xs font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-1.5">
+          Logo
+        </span>
+        <div className="flex items-center gap-3">
+          {preview ? (
+            <img src={preview} alt="Team logo preview" className="w-16 h-16 rounded-full object-cover" />
+          ) : (
+            <span className="w-16 h-16 rounded-full border border-dashed border-[var(--color-border-interactive)] flex items-center justify-center text-xs text-[var(--color-muted-foreground)]">
+              none
+            </span>
+          )}
+          <label className="inline-flex items-center px-4 min-h-[3rem] rounded-lg border border-[var(--color-border-interactive)] cursor-pointer font-semibold">
+            Choose image
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
+          {logo !== undefined ? (
+            <Button onClick={() => save({ logo }, 'Logo saved')} disabled={saving}>
+              Save logo
+            </Button>
+          ) : team.logo ? (
+            <Button variant="quiet" onClick={() => save({ logo: null }, 'Logo removed')} disabled={saving}>
+              Remove
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-1.5" htmlFor="co-owner">
+          Add a co-owner
+        </label>
+        <div className="flex gap-2">
+          <input
+            id="co-owner"
+            type="email"
+            value={coOwner}
+            placeholder="their@email.com"
+            onChange={(e) => setCoOwner(e.target.value)}
+            className="flex-1 min-w-0 px-3 py-2 min-h-[3rem] rounded-lg bg-[var(--color-background)] border border-[var(--color-border-interactive)] text-[var(--color-foreground)] placeholder:text-[var(--color-muted-foreground)] focus:outline-none focus:border-[var(--color-accent)]"
+          />
+          <Button
+            onClick={() => { save({ addOwnerEmail: coOwner.trim() }, 'Co-owner invited'); setCoOwner('') }}
+            disabled={saving || !coOwner.includes('@')}
+          >
+            Invite
+          </Button>
+        </div>
+        <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
+          They get an email; signing in with that address links them to this team.
+        </p>
+      </div>
     </div>
   )
 }

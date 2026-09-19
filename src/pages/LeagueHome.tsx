@@ -217,6 +217,7 @@ interface HomeTeam {
 interface StandingRow {
   id: string
   name: string
+  logo?: string | null
   owners: Array<{ userId: string | null; displayName: string | null; email: string }>
   wins: number
   losses: number
@@ -274,6 +275,9 @@ function StandingsSection({ leagueId, myUserId }: { leagueId: string; myUserId: 
               <span className={'w-6 text-lg font-bold tabular-nums ' + (i === 0 ? 'text-green-400' : 'text-gray-500')}>
                 {i + 1}
               </span>
+              {t.logo ? (
+                <img src={t.logo} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
+              ) : null}
               <span className="flex-1 min-w-0">
                 <span className="block font-semibold truncate">
                   {t.name}

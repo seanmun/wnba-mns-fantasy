@@ -26,6 +26,7 @@ function mapTeamRow(row: typeof mnsTeams.$inferSelect): Team {
     leagueId: row.leagueId,
     name: row.name,
     abbrev: row.abbrev,
+    logo: row.logo,
     telegramUsername: row.telegramUsername,
     capAdjustments: row.capAdjustments,
     banners: row.banners,
@@ -72,7 +73,147 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return handlePost(req, res, leagueId)
   }
 
+  if (req.method === 'PATCH') return handlePatch(req, res, leagueId, userId)
+
   return res.status(405).json({ error: 'Method not allowed' })
+}
+
+// Team settings, an OWNER act: rename, set a logo, add a co-owner.
+// The commissioner can do the same for any team.
+// PATCH { teamId, name?, logo?, addOwnerEmail? }
+async function handlePatch(
+  req: VercelRequest,
+  res: VercelResponse,
+  leagueId: string,
+  userId: string
+) {
+  const teamId = String(req.body?.teamId ?? '')
+  if (!teamId) return res.status(400).json({ error: 'teamId is required.' })
+
+  try {
+    const [team] = await db
+      .select()
+      .from(mnsTeams)
+      .where(eq(mnsTeams.id, teamId))
+      .limit(1)
+    if (!team || team.leagueId !== leagueId) {
+      return res.status(404).json({ error: 'Team not found.' })
+    }
+    const owners = await db
+      .select()
+      .from(mnsTeamOwners)
+      .where(eq(mnsTeamOwners.teamId, teamId))
+    const isOwner = owners.some((o) => o.userId === userId)
+    if (!isOwner && !(await canManageLeague(userId, leagueId))) {
+      return res.status(403).json({ error: 'Only this team\'s owners can change its settings.' })
+    }
+
+    const set: Record<string, unknown> = { updatedAt: new Date() }
+    if (req.body?.name !== undefined) {
+      const name = String(req.body.name).trim()
+      if (name.length < 1 || name.length > 60) {
+        return res.status(400).json({ error: 'Team name must be 1-60 characters.' })
+      }
+      set.name = name
+    }
+    if (req.body?.logo !== undefined) {
+      const logo = req.body.logo === null ? null : String(req.body.logo)
+      if (logo != null) {
+        // A small client-resized image travels as a data URL; anything
+        // else (or anything huge) is refused.
+        if (!/^data:image\/(png|jpeg|webp);base64,/.test(logo)) {
+          return res.status(400).json({ error: 'Logo must be a PNG, JPEG or WebP image.' })
+        }
+        if (logo.length > 300_000) {
+          return res.status(400).json({ error: 'That image is too large — it should be under ~200KB.' })
+        }
+      }
+      set.logo = logo
+    }
+    if (Object.keys(set).length > 1) {
+      await db.update(mnsTeams).set(set).where(eq(mnsTeams.id, teamId))
+    }
+
+    let invitesSent = 0
+    if (req.body?.addOwnerEmail) {
+      const email = String(req.body.addOwnerEmail).trim().toLowerCase()
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        return res.status(400).json({ error: 'That email address doesn\'t look right.' })
+      }
+      if (owners.some((o) => o.email.toLowerCase() === email)) {
+        return res.status(400).json({ error: 'That address already co-owns this team.' })
+      }
+      const [existing] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1)
+      await db.insert(mnsTeamOwners).values({
+        teamId,
+        email,
+        userId: existing?.id ?? null,
+        displayName: null,
+        isPrimary: false,
+        createdAt: new Date(),
+      })
+      // Same invite the commissioner's create sends — best-effort.
+      try {
+        const [league] = await db
+          .select({ name: mnsLeagues.name })
+          .from(mnsLeagues)
+          .where(eq(mnsLeagues.id, leagueId))
+          .limit(1)
+        const appUrl = process.env.VITE_APP_URL || 'https://wnba.mnsfantasy.com'
+        const sent = await sendAll([
+          {
+            to: email,
+            subject: `You co-own ${team.name} — ${league?.name ?? 'MNS WNBA'}`,
+            html: emailShell({
+              preheader: `You've been added as a co-owner of ${team.name}.`,
+              heading: `You co-own ${esc(team.name)}`,
+              subheading: esc(league?.name ?? 'MNS WNBA dynasty'),
+              bodyHtml: emailNote(
+                `An owner added you to the team. Sign in — or create an account — with <b style="color:#f0f4f8">this email address</b> (${esc(email)}) and the team links to you automatically.`
+              ),
+              ctaLabel: 'Claim my team',
+              ctaUrl: `${appUrl}/sign-up`,
+              footerLine: `Sent because an owner of ${esc(team.name)} added this address on wnba.mnsfantasy.com.`,
+            }),
+            text: [
+              `You've been added as a co-owner of ${team.name} in ${league?.name ?? 'an MNS WNBA dynasty league'}.`,
+              '',
+              `Sign in or create an account with this email address (${email}) and the team links to you automatically.`,
+              `${appUrl}/sign-up`,
+            ].join('\n'),
+          },
+        ])
+        invitesSent = sent.sent
+      } catch (err) {
+        logger.error('co-owner invite email failed', {
+          teamId,
+          err: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+
+    const [fresh] = await db.select().from(mnsTeams).where(eq(mnsTeams.id, teamId)).limit(1)
+    const freshOwners = await db
+      .select()
+      .from(mnsTeamOwners)
+      .where(eq(mnsTeamOwners.teamId, teamId))
+    return res.status(200).json({
+      ...mapTeamRow(fresh),
+      owners: freshOwners.map(mapOwnerRow),
+      invitesSent,
+    })
+  } catch (err) {
+    logger.error('PATCH /api/leagues/[id]/teams failed', {
+      leagueId,
+      teamId,
+      err: err instanceof Error ? err.message : String(err),
+    })
+    return res.status(500).json({ error: 'Failed to save team settings.' })
+  }
 }
 
 async function handleGet(res: VercelResponse, leagueId: string) {

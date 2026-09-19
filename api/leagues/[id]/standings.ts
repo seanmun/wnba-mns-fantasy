@@ -45,6 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return {
         id: t.id,
         name: t.name,
+        logo: t.logo,
         owners: (ownersByTeam.get(t.id) ?? []).map((o) => ({
           userId: o.userId,
           displayName: o.displayName,
