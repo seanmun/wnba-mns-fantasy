@@ -86,11 +86,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         priority: order.map((id, i) => ({ position: i + 1, teamId: id, teamName: teamName.get(id) ?? id, isMe: mine?.teamId === id })),
         myRoster: players
           .filter((p) => mine && p.teamId === mine.teamId)
-          .map((p) => ({ id: p.id, name: p.name, position: p.position, teamCode: p.teamCode, salary: p.salary, avg: avgByPlayer.get(p.id) ?? null }))
+          .map((p) => ({ id: p.id, name: p.name, position: p.position, teamCode: p.teamCode, salary: p.salary, injuryStatus: p.injuryStatus, avg: avgByPlayer.get(p.id) ?? null }))
           .sort((a, b) => (b.avg?.ppg ?? 0) - (a.avg?.ppg ?? 0)),
         freeAgents: players
           .filter((p) => p.teamId == null)
-          .map((p) => ({ id: p.id, name: p.name, position: p.position, teamCode: p.teamCode, salary: p.salary, avg: avgByPlayer.get(p.id) ?? null }))
+          .map((p) => ({ id: p.id, name: p.name, position: p.position, teamCode: p.teamCode, salary: p.salary, injuryStatus: p.injuryStatus, avg: avgByPlayer.get(p.id) ?? null }))
           .sort((a, b) => (b.avg?.ppg ?? 0) - (a.avg?.ppg ?? 0)),
         myClaims: myClaims.map((c: typeof mnsWaiverClaims.$inferSelect) => ({
           id: c.id,

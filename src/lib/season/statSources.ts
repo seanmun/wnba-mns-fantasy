@@ -196,6 +196,69 @@ export async function dayGames(date: string): Promise<Map<string, DayGame>> {
   }
 }
 
+// ESPN's league-wide injury report → players.injuryStatus/Note.
+// Full refresh each pass: players missing from the report are CLEARED
+// (healthy again), matched by normalized name like the stat ingest.
+export async function ingestInjuries(
+  db: Db,
+  leagueId: string
+): Promise<{ updated: number; unmatched: string[] }> {
+  const report = (await (await fetch(`${ESPN}/injuries`)).json()) as {
+    injuries?: Array<{
+      injuries?: Array<{
+        status?: string
+        shortComment?: string
+        longComment?: string
+        athlete?: { displayName?: string }
+      }>
+    }>
+  }
+  const byName = new Map<string, { status: string; note: string | null }>()
+  const unmatched: string[] = []
+  for (const team of report.injuries ?? []) {
+    for (const inj of team.injuries ?? []) {
+      const name = inj.athlete?.displayName
+      if (!name || !inj.status) continue
+      byName.set(normName(name), {
+        status: inj.status,
+        note: inj.shortComment ?? inj.longComment ?? null,
+      })
+    }
+  }
+
+  const pool = (await db
+    .select({ id: mnsPlayers.id, name: mnsPlayers.name, injuryStatus: mnsPlayers.injuryStatus })
+    .from(mnsPlayers)
+    .where(eq(mnsPlayers.leagueId, leagueId))) as Array<{
+    id: string
+    name: string
+    injuryStatus: string | null
+  }>
+  const matchedNames = new Set<string>()
+  let updated = 0
+  for (const p of pool) {
+    const hit = byName.get(normName(p.name))
+    if (hit) {
+      matchedNames.add(normName(p.name))
+      await db
+        .update(mnsPlayers)
+        .set({ injuryStatus: hit.status, injuryNote: hit.note })
+        .where(eq(mnsPlayers.id, p.id))
+      updated++
+    } else if (p.injuryStatus != null) {
+      await db
+        .update(mnsPlayers)
+        .set({ injuryStatus: null, injuryNote: null })
+        .where(eq(mnsPlayers.id, p.id))
+      updated++
+    }
+  }
+  for (const name of byName.keys()) {
+    if (!matchedNames.has(name)) unmatched.push(name)
+  }
+  return { updated, unmatched }
+}
+
 export async function ingestEspnDay(
   db: Db,
   leagueId: string,

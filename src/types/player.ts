@@ -35,6 +35,8 @@ export interface Player {
   sport: Sport
   slot: PlayerSlot
   onIR: boolean
+  injuryStatus?: string | null
+  injuryNote?: string | null
   isRookie: boolean
   isInternationalStash: boolean
   intEligible: boolean

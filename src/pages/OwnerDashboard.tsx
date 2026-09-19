@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, EllipsisVertical, Settings, X } from 'lucide
 import { useApi } from '../hooks/useApi'
 import { Button, Chip, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
 import { useLeague } from '../contexts/LeagueContext'
+import { InjuryTag } from '../components/InjuryTag'
 
 interface OwnerInfo {
   userId: string | null
@@ -35,6 +36,8 @@ interface RosterPlayer {
   slot: string | null
   onIR: boolean
   isRookie: boolean
+  injuryStatus?: string | null
+  injuryNote?: string | null
   keeperRound?: number | null
   avg?: {
     gp: number
@@ -444,6 +447,7 @@ export function OwnerDashboard() {
                                 <Chip tone="accent">R</Chip>
                               </span>
                             ) : null}
+                            <InjuryTag status={p.injuryStatus} />
                           </>
                         }
                         sub={

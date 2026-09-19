@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { useApi } from '../hooks/useApi'
 import { Button, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
 import { useLeague } from '../contexts/LeagueContext'
+import { InjuryTag } from '../components/InjuryTag'
 
 interface TeamRow {
   id: string
@@ -17,6 +18,7 @@ interface RosterPlayer {
   teamCode: string | null
   salary: number | null
   teamId: string | null
+  injuryStatus?: string | null
 }
 interface PickAsset {
   id: string
@@ -209,7 +211,7 @@ export function TradeMachine() {
                       <li key={p.id}>
                         <ListRow
                           mine={sel.includes(p.id)}
-                          title={p.name}
+                          title={<>{p.name}<InjuryTag status={p.injuryStatus} /></>}
                           sub={[p.position, p.teamCode, fmtSalary(p.salary)].filter(Boolean).join(' · ')}
                           end={
                             <Button variant={sel.includes(p.id) ? 'primary' : 'quiet'} onClick={() => onToggle(p.id)}>

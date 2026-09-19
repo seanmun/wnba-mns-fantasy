@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '../_db.js'
 import { mnsLeagues } from '../../src/lib/db/schema.js'
 import { logger } from '../_logger.js'
-import { ingestEspnDay, ingestSimDay } from '../../src/lib/season/statSources.js'
+import { ingestEspnDay, ingestInjuries, ingestSimDay } from '../../src/lib/season/statSources.js'
 import { easternToday, matchupWeekFor, scoreLeagueWeek } from '../../src/lib/season/score.js'
 import { processWaivers } from '../../src/lib/season/waivers.js'
 import { applyLineupsForToday } from '../../src/lib/season/lineups.js'
@@ -77,6 +77,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // engine gates itself, so calling every tick is safe.
       const waivers = await processWaivers(db, league.id, config, now)
 
+      // The injury report, full-refresh (sim leagues skip it — their
+      // players never really get hurt).
+      const injuries = source === 'espn' ? await ingestInjuries(db, league.id) : { updated: 0 }
+
       if (unmatched.length) {
         logger.error('season-tick: unmatched ESPN names', {
           leagueId: league.id,
@@ -91,6 +95,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         finalized,
         waiversGranted: waivers.granted,
         waiversFailed: waivers.failed,
+        injuriesUpdated: injuries.updated,
         unmatched: [...new Set(unmatched)].length,
       })
     } catch (err) {

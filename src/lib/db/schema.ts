@@ -170,6 +170,10 @@ export const mnsPlayers = wnbaSchema.table(
     sport: text('sport').notNull().default('wnba'),
     slot: text('slot').notNull().default('active'),
     onIR: boolean('on_ir').notNull().default(false),
+    // ESPN's injury report, refreshed each tick: status ('Out',
+    // 'Day-To-Day', ...) and the one-line note. Null = no report.
+    injuryStatus: text('injury_status'),
+    injuryNote: text('injury_note'),
     isRookie: boolean('is_rookie').notNull().default(false),
     isInternationalStash: boolean('is_international_stash')
       .notNull()

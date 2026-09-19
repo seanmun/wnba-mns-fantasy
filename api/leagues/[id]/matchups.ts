@@ -108,6 +108,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             name: p.name,
             position: p.position,
             teamCode: p.teamCode,
+            injuryStatus: p.injuryStatus,
             week: byPlayer.get(p.id) ?? null,
           }))
           .sort((a, b) => (b.week?.pts ?? 0) - (a.week?.pts ?? 0))
