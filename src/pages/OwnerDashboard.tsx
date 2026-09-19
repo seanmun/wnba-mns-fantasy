@@ -16,6 +16,13 @@ interface TeamInfo {
   id: string
   name: string
   owners: OwnerInfo[]
+  picks?: Array<{
+    id: string
+    seasonYear: number
+    round: number
+    originalTeamId: string
+    originalTeamName: string
+  }>
 }
 interface RosterPlayer {
   id: string
@@ -485,6 +492,36 @@ export function OwnerDashboard() {
           )}
         </>
       )}
+
+      {/* Draft capital is roster truth too — the picks this team can
+          deal or use, three drafts out. */}
+      {(team.picks ?? []).length > 0 ? (
+        <section className="mb-5">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-2">
+            Rookie draft picks ({team.picks!.length})
+          </h2>
+          <div className="flex flex-wrap gap-1.5">
+            {[...team.picks!]
+              .sort((a, b) => a.seasonYear - b.seasonYear || a.round - b.round)
+              .map((pk) => (
+                <span
+                  key={pk.id}
+                  className="text-sm rounded-full px-3 py-1.5 border border-[var(--color-border)] tabular-nums"
+                >
+                  {pk.seasonYear} Rd {pk.round}
+                  {pk.originalTeamId !== team.id ? (
+                    <span className="text-[var(--color-accent)]"> via {pk.originalTeamName}</span>
+                  ) : null}
+                </span>
+              ))}
+          </div>
+          {mine ? (
+            <p className="mt-1.5 text-xs text-[var(--color-muted-foreground)]">
+              Picks trade like players — deal them in the Trade Machine.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
     </div>
   )
 }

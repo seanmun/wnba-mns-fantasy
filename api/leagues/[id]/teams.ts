@@ -11,6 +11,8 @@ import {
 import { esc, sendAll } from '../../_email.js'
 import { emailNote, emailShell } from '../../_emailTemplate.js'
 import { createTeamSchema, parseBody } from '../../_validation.js'
+import { pickBoard, type FuturePick } from '../../../src/lib/season/picks.js'
+import type { LeagueConfig } from '../../../src/types/leagueConfig.js'
 import { logger } from '../../_logger.js'
 import type { Team, TeamOwner } from '../../../src/types/team.js'
 
@@ -100,9 +102,30 @@ async function handleGet(res: VercelResponse, leagueId: string) {
       ownersByTeam.set(row.teamId, list)
     }
 
-    const result: TeamWithOwners[] = teamRows.map((t) => ({
+    // Each team's future rookie picks ride along — public holdings,
+    // same board the trade machine deals from.
+    let picksByTeam = new Map<string, FuturePick[]>()
+    const [league] = await db
+      .select()
+      .from(mnsLeagues)
+      .where(eq(mnsLeagues.id, leagueId))
+      .limit(1)
+    if (league) {
+      const board = await pickBoard(db, {
+        id: leagueId,
+        seasonYear: league.seasonYear,
+        config: league.config as LeagueConfig,
+      })
+      picksByTeam = board.reduce((m, pk) => {
+        m.set(pk.ownerTeamId, [...(m.get(pk.ownerTeamId) ?? []), pk])
+        return m
+      }, new Map<string, FuturePick[]>())
+    }
+
+    const result = teamRows.map((t) => ({
       ...mapTeamRow(t),
       owners: ownersByTeam.get(t.id) ?? [],
+      picks: picksByTeam.get(t.id) ?? [],
     }))
 
     return res.status(200).json(result)

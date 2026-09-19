@@ -12,6 +12,7 @@ import {
   mnsTradeProposalResponses,
 } from '../../../src/lib/db/schema.js'
 import { isTradeDeadlinePassed } from '../../../src/rules/tradeRules.js'
+import { pickBoard as sharedPickBoard } from '../../../src/lib/season/picks.js'
 import { logTransaction } from '../../../src/lib/season/waivers.js'
 import { logger } from '../../_logger.js'
 import type { TradeAsset } from '../../../src/types/trade.js'
@@ -46,45 +47,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .where(and(eq(mnsTeams.leagueId, leagueId), eq(mnsTeamOwners.userId, userId)))
     .limit(1)
 
-  // The pick board: every future rookie pick for the next three
-  // drafts, owned by its original team unless a future_picks row says
-  // otherwise. Pick ids are stable: pick:<year>:r<round>:<origTeamId>.
-  const pickBoard = async () => {
-    const teams = await db.select().from(mnsTeams).where(eq(mnsTeams.leagueId, leagueId))
-    const teamName = new Map(teams.map((t) => [t.id, t.name]))
-    const overrides = await db
-      .select()
-      .from(mnsFuturePicks)
-      .where(eq(mnsFuturePicks.leagueId, leagueId))
-    const ownerOf = new Map(
-      overrides.map((r) => [`${r.seasonYear}:${r.round}:${r.originalTeamId}`, r.currentTeamId])
-    )
-    const rounds = config.draft?.rookieRounds ?? 3
-    const picks: Array<{
-      id: string
-      seasonYear: number
-      round: number
-      originalTeamId: string
-      ownerTeamId: string
-      displayName: string
-    }> = []
-    for (let y = league.seasonYear + 1; y <= league.seasonYear + 3; y++) {
-      for (let r = 1; r <= rounds; r++) {
-        for (const t of teams) {
-          const owner = ownerOf.get(`${y}:${r}:${t.id}`) ?? t.id
-          picks.push({
-            id: `pick:${y}:r${r}:${t.id}`,
-            seasonYear: y,
-            round: r,
-            originalTeamId: t.id,
-            ownerTeamId: owner,
-            displayName: `${y} Round ${r} pick (via ${teamName.get(t.id) ?? t.id})`,
-          })
-        }
-      }
-    }
-    return picks
-  }
+  // The pick board, shared with the roster page — see lib/season/picks.
+  const pickBoard = () =>
+    sharedPickBoard(db, { id: leagueId, seasonYear: league.seasonYear, config })
 
   try {
     if (req.method === 'GET') {
