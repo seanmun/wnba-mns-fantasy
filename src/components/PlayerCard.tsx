@@ -80,7 +80,10 @@ export function PlayerCard({
 
   return (
     <Sheet open={!!playerId} onClose={onClose} label="Player card">
-      <PlayerCardInner playerId={playerId} ranges={ranges} data={data} error={error} />
+      {/* The card stays hand-sized; anything past that scrolls inside. */}
+      <div className="max-h-[65vh] overflow-y-auto overscroll-contain">
+        <PlayerCardInner playerId={playerId} ranges={ranges} data={data} error={error} />
+      </div>
     </Sheet>
   )
 }
