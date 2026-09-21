@@ -13,6 +13,10 @@ export interface SeasonAvg {
   bpg: number
   tpg: number
   fgPct: number
+  /** Cat Score: mean z-score across all nine categories vs the pool. */
+  cat?: number | null
+  /** CAT$: Cat Score per $1M of salary — value density. */
+  catD?: number | null
 }
 
 // Season averages from the real box scores on file — one query, one
@@ -77,6 +81,9 @@ export async function averagesForRanges(
       tpm: mnsPlayerStatLines.tpm,
       fgm: mnsPlayerStatLines.fgm,
       fga: mnsPlayerStatLines.fga,
+      ftm: mnsPlayerStatLines.ftm,
+      fta: mnsPlayerStatLines.fta,
+      tov: mnsPlayerStatLines.tov,
     })
     .from(mnsPlayerStatLines)
     .where(eq(mnsPlayerStatLines.leagueId, leagueId))) as Array<{
@@ -91,6 +98,9 @@ export async function averagesForRanges(
     tpm: number
     fgm: number
     fga: number
+    ftm: number
+    fta: number
+    tov: number
   }>
 
   const day = (offset: number) =>
@@ -99,8 +109,8 @@ export async function averagesForRanges(
   const cut30 = day(30)
   const cut10 = day(10)
 
-  type Acc = { gp: number; pts: number; reb: number; ast: number; stl: number; blk: number; tpm: number; fgm: number; fga: number }
-  const zero = (): Acc => ({ gp: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tpm: 0, fgm: 0, fga: 0 })
+  type Acc = { gp: number; pts: number; reb: number; ast: number; stl: number; blk: number; tpm: number; fgm: number; fga: number; ftm: number; fta: number; tov: number }
+  const zero = (): Acc => ({ gp: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tpm: 0, fgm: 0, fga: 0, ftm: 0, fta: 0, tov: 0 })
   const buckets: Record<StatRange, Map<string, Acc>> = {
     season: new Map(),
     last30: new Map(),
@@ -112,6 +122,7 @@ export async function averagesForRanges(
     if (r.min > 0) a.gp++
     a.pts += r.pts; a.reb += r.reb; a.ast += r.ast; a.stl += r.stl
     a.blk += r.blk; a.tpm += r.tpm; a.fgm += r.fgm; a.fga += r.fga
+    a.ftm += r.ftm; a.fta += r.fta; a.tov += r.tov
     m.set(r.playerId, a)
   }
   for (const r of rows) {
@@ -127,6 +138,9 @@ export async function averagesForRanges(
   const per = (v: number, gp: number) => (gp > 0 ? Math.round((v / gp) * 10) / 10 : 0)
   const finish = (m: Map<string, Acc>): Record<string, SeasonAvg> => {
     const out: Record<string, SeasonAvg> = {}
+    // The nine category values per player (ratios from raw sums, the
+    // scorer's rule), kept for the z-pass below.
+    const vectors = new Map<string, number[]>()
     for (const [id, a] of m) {
       if (a.gp === 0 && a.fga === 0) continue
       out[id] = {
@@ -138,6 +152,38 @@ export async function averagesForRanges(
         bpg: per(a.blk, a.gp),
         tpg: per(a.tpm, a.gp),
         fgPct: a.fga > 0 ? Math.round((a.fgm / a.fga) * 1000) / 10 : 0,
+      }
+      if (a.gp > 0) {
+        vectors.set(id, [
+          a.pts / a.gp,
+          a.reb / a.gp,
+          a.ast / a.gp,
+          a.stl / a.gp,
+          a.blk / a.gp,
+          a.tpm / a.gp,
+          a.fga > 0 ? a.fgm / a.fga : 0,
+          a.fta > 0 ? a.ftm / a.fta : 0,
+          a.tov > 0 ? a.ast / a.tov : a.ast / a.gp,
+        ])
+      }
+    }
+    // Cat Score: z-score each category across everyone who played,
+    // average the nine. 0 = league average, +1 = a deviation better.
+    const ids = [...vectors.keys()]
+    if (ids.length >= 3) {
+      const dims = 9
+      const mean: number[] = Array(dims).fill(0)
+      for (const v of vectors.values()) for (let d = 0; d < dims; d++) mean[d] += v[d]
+      for (let d = 0; d < dims; d++) mean[d] /= ids.length
+      const sd: number[] = Array(dims).fill(0)
+      for (const v of vectors.values())
+        for (let d = 0; d < dims; d++) sd[d] += (v[d] - mean[d]) ** 2
+      for (let d = 0; d < dims; d++) sd[d] = Math.sqrt(sd[d] / ids.length)
+      for (const id of ids) {
+        const v = vectors.get(id)!
+        let sum = 0
+        for (let d = 0; d < dims; d++) sum += sd[d] > 0 ? (v[d] - mean[d]) / sd[d] : 0
+        out[id].cat = Math.round((sum / dims) * 100) / 100
       }
     }
     return out

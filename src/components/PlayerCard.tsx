@@ -171,7 +171,7 @@ function PlayerCardInner({
             <thead>
               <tr className="border-b border-[var(--color-border)] text-[var(--color-muted-foreground)]">
                 <th className="text-left px-3 py-1.5 font-bold">Averages</th>
-                {['PTS', 'REB', 'AST', 'STL', 'BLK', '3PM', 'FG%', 'GP'].map((h) => (
+                {['PTS', 'REB', 'AST', 'STL', 'BLK', '3PM', 'FG%', 'CAT', 'CAT$', 'GP'].map((h) => (
                   <th key={h} className="text-right px-2 py-1.5 font-bold">
                     {h}
                   </th>
@@ -191,6 +191,8 @@ function PlayerCardInner({
                     <td className="px-2 text-right">{a?.bpg ?? '—'}</td>
                     <td className="px-2 text-right">{a?.tpg ?? '—'}</td>
                     <td className="px-2 text-right">{a?.fgPct != null ? `${a.fgPct}%` : '—'}</td>
+                    <td className="px-2 text-right font-semibold">{a?.cat != null ? a.cat.toFixed(2) : '—'}</td>
+                    <td className="px-2 text-right font-semibold">{a?.catD != null ? a.catD.toFixed(2) : '—'}</td>
                     <td className="px-2 text-right">{a?.gp ?? 0}</td>
                   </tr>
                 )

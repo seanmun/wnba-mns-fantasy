@@ -16,6 +16,8 @@ export interface StatAvg {
   bpg: number
   tpg: number
   fgPct: number
+  cat?: number | null
+  catD?: number | null
 }
 export interface StatRowPlayer {
   id: string
@@ -66,6 +68,7 @@ export function RangeChips({
 }
 
 type SortKey = keyof StatAvg | 'salary'
+const fmt2 = (v: number | null | undefined) => (v == null ? '—' : v.toFixed(2))
 const COLS: Array<[SortKey, string]> = [
   ['ppg', 'PTS'],
   ['rpg', 'REB'],
@@ -74,6 +77,8 @@ const COLS: Array<[SortKey, string]> = [
   ['bpg', 'BLK'],
   ['tpg', '3PM'],
   ['fgPct', 'FG%'],
+  ['cat', 'CAT'],
+  ['catD', 'CAT$'],
   ['gp', 'GP'],
   ['salary', '$'],
 ]
@@ -101,7 +106,7 @@ export function StatTable({
     maxSalary ?? Math.max(1, ...players.map((p) => p.salary ?? 0))
 
   const valueOf = (p: StatRowPlayer, k: SortKey): number =>
-    k === 'salary' ? p.salary ?? 0 : stats[p.id]?.[k] ?? 0
+    k === 'salary' ? p.salary ?? 0 : (stats[p.id]?.[k] as number | null | undefined) ?? -99
 
   const sorted = [...players].sort(
     (a, b) => (asc ? 1 : -1) * (valueOf(a, sortBy) - valueOf(b, sortBy))
@@ -191,6 +196,8 @@ export function StatTable({
                 <td className="px-2 text-right">{a?.bpg ?? '—'}</td>
                 <td className="px-2 text-right">{a?.tpg ?? '—'}</td>
                 <td className="px-2 text-right">{a?.fgPct != null ? `${a.fgPct}%` : '—'}</td>
+                <td className="px-2 text-right font-semibold">{fmt2(a?.cat)}</td>
+                <td className="px-2 text-right font-semibold">{fmt2(a?.catD)}</td>
                 <td className="px-2 text-right">{a?.gp ?? 0}</td>
                 <td className="px-2 text-right text-[var(--color-muted-foreground)]">
                   {p.salary != null ? `$${(p.salary / 1000).toFixed(0)}k` : '—'}

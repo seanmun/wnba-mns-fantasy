@@ -211,7 +211,7 @@ export function OwnerDashboard() {
   const [showSettings, setShowSettings] = useState(false)
   const [range, setRange] = useState<RangeKey>('season')
   const [ranges, setRanges] = useState<Record<string, Record<string, StatAvg> | null> | null>(null)
-  const [sortBy, setSortBy] = useState<'gp' | 'ppg' | 'rpg' | 'apg' | 'spg' | 'bpg' | 'tpg' | 'fgPct' | 'salary'>('ppg')
+  const [sortBy, setSortBy] = useState<'gp' | 'ppg' | 'rpg' | 'apg' | 'spg' | 'bpg' | 'tpg' | 'fgPct' | 'cat' | 'catD' | 'salary'>('ppg')
   const [asc, setAsc] = useState(false)
   const [cardId, setCardId] = useState<string | null>(null)
 
@@ -489,6 +489,8 @@ export function OwnerDashboard() {
                               ['bpg', 'BLK'],
                               ['tpg', '3PM'],
                               ['fgPct', 'FG%'],
+                              ['cat', 'CAT'],
+                              ['catD', 'CAT$'],
                               ['gp', 'GP'],
                               ['salary', '$'],
                             ] as const
@@ -523,7 +525,7 @@ export function OwnerDashboard() {
                             const v = (p: RosterPlayer) =>
                               sortBy === 'salary'
                                 ? p.salary ?? 0
-                                : ranges?.[range]?.[p.id]?.[sortBy] ?? 0
+                                : (ranges?.[range]?.[p.id]?.[sortBy] as number | null | undefined) ?? -99
                             return (asc ? 1 : -1) * (v(a) - v(b))
                           })
                           .map((p) => {
@@ -602,6 +604,8 @@ export function OwnerDashboard() {
                                   <td className="px-2 text-right">{a?.bpg ?? '—'}</td>
                                   <td className="px-2 text-right">{a?.tpg ?? '—'}</td>
                                   <td className="px-2 text-right">{a?.fgPct != null ? `${a.fgPct}%` : '—'}</td>
+                                  <td className="px-2 text-right font-semibold">{a?.cat != null ? a.cat.toFixed(2) : '—'}</td>
+                                  <td className="px-2 text-right font-semibold">{a?.catD != null ? a.catD.toFixed(2) : '—'}</td>
                                   <td className="px-2 text-right">{a?.gp ?? 0}</td>
                                   <td className="px-2 text-right text-[var(--color-muted-foreground)]">
                                     {p.salary != null ? fmtM(p.salary) : '—'}
@@ -609,7 +613,7 @@ export function OwnerDashboard() {
                                 </tr>
                                 {editable && open ? (
                                   <tr className="border-b border-[var(--color-border)] last:border-b-0">
-                                    <td colSpan={11} className="px-2 py-1.5">
+                                    <td colSpan={13} className="px-2 py-1.5">
                                       <div className="flex flex-wrap gap-1.5 justify-start">
                                         {slotKey !== 'active' ? (
                                           <Button variant="quiet" onClick={() => moveSlot(p.id, 'active')} disabled={busy}>
