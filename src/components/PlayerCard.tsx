@@ -112,6 +112,13 @@ function PlayerCardInner({
   }
   const { player: p, log } = data
   const fresh = isFreshNews(p.injuryUpdatedAt, p.injuryStatus)
+  const seasonAvg = ranges?.season?.[playerId]
+  const catTone = (v: number | null | undefined) =>
+    v == null
+      ? 'var(--color-muted-foreground)'
+      : v >= 0
+        ? 'var(--color-accent)'
+        : 'var(--color-pick-loss, #ff453a)'
   return (
     <div className="flex flex-col gap-4 pb-4">
       <div>
@@ -127,6 +134,30 @@ function PlayerCardInner({
           {[p.position, p.teamCode, fmtSalary(p.salary)].filter(Boolean).join(' · ')} ·{' '}
           {p.teamName ?? 'Free agent'}
         </p>
+      </div>
+
+      {/* The headline pair: nine-cat value and value per dollar, full
+          season — the two numbers a decision starts from. */}
+      <div className="grid grid-cols-2 gap-2">
+        {(
+          [
+            ['CAT', seasonAvg?.cat, 'season value, 0 = league average'],
+            ['CAT$', seasonAvg?.catD, 'value per $1M of salary'],
+          ] as const
+        ).map(([label, v, hint]) => (
+          <div
+            key={label}
+            className="rounded-lg border border-[var(--color-border)] bg-mns-card px-3 py-2.5 text-center"
+          >
+            <p className="text-[0.68rem] font-bold tracking-[0.12em] uppercase text-[var(--color-muted-foreground)]">
+              {label}
+            </p>
+            <b className="block text-3xl leading-tight tabular-nums" style={{ color: catTone(v) }}>
+              {v != null ? (v >= 0 ? `+${v.toFixed(2)}` : v.toFixed(2)) : '—'}
+            </b>
+            <p className="text-[0.68rem] text-[var(--color-muted-foreground)]">{hint}</p>
+          </div>
+        ))}
       </div>
 
       <div className="rounded-lg border border-[var(--color-border)] bg-mns-card p-3 text-sm">
