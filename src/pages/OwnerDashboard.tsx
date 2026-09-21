@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
 import { toast } from 'sonner'
 import { ChevronLeft, ChevronRight, EllipsisVertical, Settings, X } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
-import { Button, Chip, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
+import { Button, Chip, EmptyState, PageHeader, Skeleton } from '../ui/components'
 import { useLeague } from '../contexts/LeagueContext'
 import { InjuryTag } from '../components/InjuryTag'
-import { RangeChips, StatTable, type RangeKey, type StatAvg } from '../components/StatTable'
+import { RangeChips, type RangeKey, type StatAvg } from '../components/StatTable'
 
 interface OwnerInfo {
   userId: string | null
@@ -207,9 +207,10 @@ export function OwnerDashboard() {
   const [confirmDrop, setConfirmDrop] = useState<string | null>(null)
   const [claims, setClaims] = useState<PendingClaim[]>([])
   const [showSettings, setShowSettings] = useState(false)
-  const [view, setView] = useState<'lineup' | 'stats'>('lineup')
   const [range, setRange] = useState<RangeKey>('season')
   const [ranges, setRanges] = useState<Record<string, Record<string, StatAvg> | null> | null>(null)
+  const [sortBy, setSortBy] = useState<'gp' | 'ppg' | 'rpg' | 'apg' | 'spg' | 'bpg' | 'tpg' | 'fgPct' | 'salary'>('ppg')
+  const [asc, setAsc] = useState(false)
 
   const load = () => {
     Promise.all([
@@ -254,11 +255,10 @@ export function OwnerDashboard() {
   }, [apiFetch, leagueId, owned])
 
   useEffect(() => {
-    if (view !== 'stats' || ranges) return
     apiFetch<Record<string, Record<string, StatAvg> | null>>(`/api/leagues/${leagueId}/stats`)
       .then(setRanges)
       .catch(() => setRanges({}))
-  }, [view, ranges, apiFetch, leagueId])
+  }, [apiFetch, leagueId])
 
   const moveSlot = async (playerId: string, slot: 'active' | 'bench' | 'ir' | 'drop') => {
     setBusy(true)
@@ -405,43 +405,6 @@ export function OwnerDashboard() {
         </div>
       ) : null}
 
-      {/* Two ways to read a roster: the lineup you set, or the numbers. */}
-      <div className="mb-4 flex gap-1.5">
-        {(
-          [
-            ['lineup', 'Lineup'],
-            ['stats', 'Stats'],
-          ] as const
-        ).map(([k, label]) => (
-          <button
-            key={k}
-            onClick={() => setView(k)}
-            aria-pressed={view === k}
-            className={
-              'text-sm rounded-full px-4 min-h-[2.5rem] border font-semibold ' +
-              (view === k
-                ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
-                : 'border-[var(--color-border)] text-[var(--color-muted-foreground)]')
-            }
-          >
-            {label}
-          </button>
-        ))}
-        {view === 'stats' ? (
-          <span className="ml-auto">
-            <RangeChips value={range} onChange={setRange} hasLastSeason={!!ranges?.lastSeason} />
-          </span>
-        ) : null}
-      </div>
-
-      {view === 'stats' ? (
-        <div className="mb-5">
-          <StatTable players={roster} stats={ranges?.[range] ?? {}} />
-        </div>
-      ) : null}
-
-      {view === 'stats' ? null : (
-      <>
       {/* The day carousel: yesterday is history, tomorrow is a plan. */}
       <div className="mb-4 flex items-center gap-2">
         <Button
@@ -472,6 +435,9 @@ export function OwnerDashboard() {
           </Button>
         ) : null}
       </div>
+      <div className="mb-4 flex justify-end">
+        <RangeChips value={range} onChange={setRange} hasLastSeason={!!ranges?.lastSeason} />
+      </div>
 
       {roster.length === 0 ? (
         <EmptyState title="No players yet">
@@ -491,92 +457,168 @@ export function OwnerDashboard() {
                 <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-2">
                   {label} ({list.length})
                 </h2>
-                <ul className="flex flex-col gap-2">
-                  {list.map((p) => (
-                    <li key={p.id}>
-                      <ListRow
-                        title={
-                          <>
-                            {p.name}
-                            {p.isRookie ? (
-                              <span className="ml-1.5">
-                                <Chip tone="accent">R</Chip>
-                              </span>
-                            ) : null}
-                            <InjuryTag status={p.injuryStatus} />
-                          </>
-                        }
-                        sub={
-                          <>
-                            {[p.position, p.teamCode, p.salary != null ? fmtM(p.salary) : null]
-                              .filter(Boolean)
-                              .join(' · ')}
-                            {day ? <> — {gameNote(p)}</> : null}
-                          </>
-                        }
-                        end={
-                          editable ? (
-                            <Button
-                              variant="quiet"
-                              aria-label={openRow === p.id ? `Close actions for ${p.name}` : `Move ${p.name}`}
-                              aria-expanded={openRow === p.id}
-                              onClick={() => {
-                                setOpenRow(openRow === p.id ? null : p.id)
-                                setConfirmDrop(null)
-                              }}
-                            >
-                              {openRow === p.id ? <X aria-hidden /> : <EllipsisVertical aria-hidden />}
-                            </Button>
-                          ) : p.salary != null ? (
-                            <span className="text-[0.9rem] text-[var(--color-muted-foreground)] tabular-nums">
-                              ${p.salary.toLocaleString()}
-                            </span>
-                          ) : undefined
-                        }
-                      />
-                      {editable && openRow === p.id ? (
-                        <div className="mt-1.5 mb-1 flex flex-wrap gap-1.5 justify-end">
-                          {slotKey !== 'active' ? (
-                            <Button variant="quiet" onClick={() => moveSlot(p.id, 'active')} disabled={busy}>
-                              Start
-                            </Button>
-                          ) : null}
-                          {slotKey !== 'bench' ? (
-                            <Button variant="quiet" onClick={() => moveSlot(p.id, 'bench')} disabled={busy}>
-                              Bench
-                            </Button>
-                          ) : null}
-                          {slotKey !== 'ir' ? (
-                            <Button variant="quiet" onClick={() => moveSlot(p.id, 'ir')} disabled={busy}>
-                              IR
-                            </Button>
-                          ) : null}
-                          {isToday ? (
-                            <Button
-                              variant={confirmDrop === p.id ? 'danger' : 'quiet'}
-                              onClick={() =>
-                                confirmDrop === p.id ? moveSlot(p.id, 'drop') : setConfirmDrop(p.id)
-                              }
-                              disabled={busy}
-                            >
-                              {confirmDrop === p.id ? `Confirm drop ${p.name.split(' ').pop()}` : 'Drop'}
-                            </Button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </li>
-                  ))}
-                  {list.length === 0 ? (
-                    <p className="text-sm text-[var(--color-muted-foreground)]">Empty.</p>
-                  ) : null}
-                </ul>
+                {list.length === 0 ? (
+                  <p className="text-sm text-[var(--color-muted-foreground)]">Empty.</p>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-[var(--color-border)] bg-mns-card">
+                    <table className="w-full text-sm tabular-nums whitespace-nowrap">
+                      <thead>
+                        <tr className="border-b border-[var(--color-border)]">
+                          {editable ? <th className="sticky left-0 bg-mns-card w-8 p-0" /> : null}
+                          <th
+                            className={
+                              'sticky bg-mns-card text-left text-xs font-bold text-[var(--color-muted-foreground)] px-2 py-2 ' +
+                              (editable ? 'left-8' : 'left-0')
+                            }
+                          >
+                            Player
+                          </th>
+                          {(
+                            [
+                              ['gp', 'GP'],
+                              ['ppg', 'PTS'],
+                              ['rpg', 'REB'],
+                              ['apg', 'AST'],
+                              ['spg', 'STL'],
+                              ['bpg', 'BLK'],
+                              ['tpg', '3PM'],
+                              ['fgPct', 'FG%'],
+                              ['salary', '$'],
+                            ] as const
+                          ).map(([k, h]) => (
+                            <th key={k} className="p-0">
+                              <button
+                                onClick={() => {
+                                  if (sortBy === k) setAsc(!asc)
+                                  else {
+                                    setSortBy(k)
+                                    setAsc(false)
+                                  }
+                                }}
+                                aria-pressed={sortBy === k}
+                                className={
+                                  'w-full min-h-[2.5rem] px-2 text-right text-xs font-bold ' +
+                                  (sortBy === k
+                                    ? 'text-[var(--color-accent)]'
+                                    : 'text-[var(--color-muted-foreground)]')
+                                }
+                              >
+                                {h}
+                                {sortBy === k ? (asc ? ' ↑' : ' ↓') : ''}
+                              </button>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...list]
+                          .sort((a, b) => {
+                            const v = (p: RosterPlayer) =>
+                              sortBy === 'salary'
+                                ? p.salary ?? 0
+                                : ranges?.[range]?.[p.id]?.[sortBy] ?? 0
+                            return (asc ? 1 : -1) * (v(a) - v(b))
+                          })
+                          .map((p) => {
+                            const a = ranges?.[range]?.[p.id]
+                            const open = openRow === p.id
+                            return (
+                              <Fragment key={p.id}>
+                                <tr className="border-b border-[var(--color-border)] last:border-b-0">
+                                  {editable ? (
+                                    <td className="sticky left-0 bg-mns-card w-8 px-1">
+                                      <button
+                                        aria-label={open ? `Close actions for ${p.name}` : `Move ${p.name}`}
+                                        aria-expanded={open}
+                                        onClick={() => {
+                                          setOpenRow(open ? null : p.id)
+                                          setConfirmDrop(null)
+                                        }}
+                                        className="min-h-[2.75rem] px-1 text-[var(--color-muted-foreground)]"
+                                      >
+                                        {open ? (
+                                          <X aria-hidden className="w-4 h-4" />
+                                        ) : (
+                                          <EllipsisVertical aria-hidden className="w-4 h-4" />
+                                        )}
+                                      </button>
+                                    </td>
+                                  ) : null}
+                                  <td
+                                    className={
+                                      'sticky bg-mns-card px-2 py-1.5 max-w-[10rem] ' +
+                                      (editable ? 'left-8' : 'left-0')
+                                    }
+                                  >
+                                    <span className="block font-semibold truncate">
+                                      {p.name}
+                                      {p.isRookie ? (
+                                        <span className="ml-1"><Chip tone="accent">R</Chip></span>
+                                      ) : null}
+                                      <InjuryTag status={p.injuryStatus} />
+                                    </span>
+                                    <span className="block text-xs text-[var(--color-muted-foreground)] truncate">
+                                      {[p.position, p.teamCode].filter(Boolean).join(' · ')}
+                                      {day ? <> — {gameNote(p)}</> : null}
+                                    </span>
+                                  </td>
+                                  <td className="px-2 text-right">{a?.gp ?? 0}</td>
+                                  <td className="px-2 text-right font-semibold">{a?.ppg ?? '—'}</td>
+                                  <td className="px-2 text-right">{a?.rpg ?? '—'}</td>
+                                  <td className="px-2 text-right">{a?.apg ?? '—'}</td>
+                                  <td className="px-2 text-right">{a?.spg ?? '—'}</td>
+                                  <td className="px-2 text-right">{a?.bpg ?? '—'}</td>
+                                  <td className="px-2 text-right">{a?.tpg ?? '—'}</td>
+                                  <td className="px-2 text-right">{a?.fgPct != null ? `${a.fgPct}%` : '—'}</td>
+                                  <td className="px-2 text-right text-[var(--color-muted-foreground)]">
+                                    {p.salary != null ? fmtM(p.salary) : '—'}
+                                  </td>
+                                </tr>
+                                {editable && open ? (
+                                  <tr className="border-b border-[var(--color-border)] last:border-b-0">
+                                    <td colSpan={11} className="px-2 py-1.5">
+                                      <div className="flex flex-wrap gap-1.5 justify-start">
+                                        {slotKey !== 'active' ? (
+                                          <Button variant="quiet" onClick={() => moveSlot(p.id, 'active')} disabled={busy}>
+                                            Start
+                                          </Button>
+                                        ) : null}
+                                        {slotKey !== 'bench' ? (
+                                          <Button variant="quiet" onClick={() => moveSlot(p.id, 'bench')} disabled={busy}>
+                                            Bench
+                                          </Button>
+                                        ) : null}
+                                        {slotKey !== 'ir' ? (
+                                          <Button variant="quiet" onClick={() => moveSlot(p.id, 'ir')} disabled={busy}>
+                                            IR
+                                          </Button>
+                                        ) : null}
+                                        {isToday ? (
+                                          <Button
+                                            variant={confirmDrop === p.id ? 'danger' : 'quiet'}
+                                            onClick={() =>
+                                              confirmDrop === p.id ? moveSlot(p.id, 'drop') : setConfirmDrop(p.id)
+                                            }
+                                            disabled={busy}
+                                          >
+                                            {confirmDrop === p.id ? `Confirm drop ${p.name.split(' ').pop()}` : 'Drop'}
+                                          </Button>
+                                        ) : null}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ) : null}
+                              </Fragment>
+                            )
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </section>
             ) : null
           )}
         </>
-      )}
-
-      </>
       )}
 
       {/* Draft capital is roster truth too — the picks this team can
