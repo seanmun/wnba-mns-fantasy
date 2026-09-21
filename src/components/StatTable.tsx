@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { InjuryTag } from './InjuryTag'
+import { PlayerName } from './InjuryTag'
 
 // The research table both roster surfaces share: sortable columns,
 // range-filtered averages, the player column pinned while the numbers
@@ -140,8 +140,7 @@ export function StatTable({
               <tr key={p.id} className="border-b border-[var(--color-border)] last:border-b-0">
                 <td className="sticky left-0 bg-mns-card px-3 py-1.5 max-w-[11rem]">
                   <span className="block font-semibold truncate">
-                    {p.name}
-                    <InjuryTag status={p.injuryStatus} />
+                    <PlayerName name={p.name} injuryStatus={p.injuryStatus} />
                   </span>
                   <span className="block text-xs text-[var(--color-muted-foreground)]">
                     {[p.position, p.teamCode].filter(Boolean).join(' · ')}

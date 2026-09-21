@@ -4,7 +4,7 @@ import { useUser } from '@clerk/clerk-react'
 import { useApi } from '../hooks/useApi'
 import { Tv } from 'lucide-react'
 import { Button, EmptyState, PageHeader, Skeleton } from '../ui/components'
-import { InjuryTag } from '../components/InjuryTag'
+import { PlayerName } from '../components/InjuryTag'
 
 interface WeekTotals {
   pts: number
@@ -346,11 +346,10 @@ export function MatchupDetail() {
                     }
                   >
                     <span className="block font-semibold text-sm">
-                      {p.name}
+                      <PlayerName name={p.name} injuryStatus={p.injuryStatus} />
                       <span className="ml-1.5 text-xs text-[var(--color-muted-foreground)]">
                         {[p.position, p.teamCode].filter(Boolean).join(' · ')}
                       </span>
-                      <InjuryTag status={p.injuryStatus} />
                       {slot !== 'active' ? (
                         <span className="ml-1.5 text-[0.65rem] uppercase tracking-wider rounded px-1 py-0.5 border border-[var(--color-border)] text-[var(--color-muted-foreground)]">
                           {slot === 'ir' ? 'IR' : 'Bench'}

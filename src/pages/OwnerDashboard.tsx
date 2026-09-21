@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, EllipsisVertical, Settings, X } from 'lucide
 import { useApi } from '../hooks/useApi'
 import { Button, Chip, EmptyState, PageHeader, Skeleton } from '../ui/components'
 import { useLeague } from '../contexts/LeagueContext'
-import { InjuryTag } from '../components/InjuryTag'
+import { PlayerName } from '../components/InjuryTag'
 import { RangeChips, type RangeKey, type StatAvg } from '../components/StatTable'
 
 interface OwnerInfo {
@@ -551,11 +551,10 @@ export function OwnerDashboard() {
                                     }
                                   >
                                     <span className="block font-semibold truncate">
-                                      {p.name}
+                                      <PlayerName name={p.name} injuryStatus={p.injuryStatus} />
                                       {p.isRookie ? (
                                         <span className="ml-1"><Chip tone="accent">R</Chip></span>
                                       ) : null}
-                                      <InjuryTag status={p.injuryStatus} />
                                     </span>
                                     <span className="block text-xs text-[var(--color-muted-foreground)] truncate">
                                       {[p.position, p.teamCode].filter(Boolean).join(' · ')}

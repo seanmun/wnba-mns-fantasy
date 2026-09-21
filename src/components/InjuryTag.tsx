@@ -1,18 +1,23 @@
-// The injury report in two letters: red OUT, amber DTD (or the raw
-// status ESPN gives). Sits inline after a player's name everywhere
-// rosters render.
-export function InjuryTag({ status }: { status?: string | null }) {
-  if (!status) return null
-  const out = status.toLowerCase() === 'out'
+// Injury state carried by the NAME itself — red for Out, amber for
+// day-to-day/questionable — because a phone row has no room for a
+// badge. Screen readers still get the words via visually-hidden text;
+// sighted color-blind users get luminance difference plus the title.
+export function PlayerName({
+  name,
+  injuryStatus,
+}: {
+  name: string
+  injuryStatus?: string | null
+}) {
+  if (!injuryStatus) return <>{name}</>
+  const out = injuryStatus.toLowerCase() === 'out'
   return (
     <span
-      className="ml-1.5 align-middle text-[0.62rem] font-bold uppercase tracking-wide rounded px-1 py-0.5"
-      style={{
-        color: out ? 'var(--color-pick-loss, #ff453a)' : 'var(--color-key, #ffb000)',
-        border: `1px solid ${out ? 'var(--color-pick-loss, #ff453a)' : 'var(--color-key, #ffb000)'}`,
-      }}
+      style={{ color: out ? 'var(--color-pick-loss, #ff453a)' : 'var(--color-key, #ffb000)' }}
+      title={injuryStatus}
     >
-      {out ? 'OUT' : status === 'Day-To-Day' ? 'DTD' : status}
+      {name}
+      <span className="sr-only"> ({injuryStatus})</span>
     </span>
   )
 }

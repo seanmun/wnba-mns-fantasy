@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { useApi } from '../hooks/useApi'
 import { Plus } from 'lucide-react'
 import { Button, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
-import { InjuryTag } from '../components/InjuryTag'
+import { PlayerName } from '../components/InjuryTag'
 import { RangeChips, StatTable, type RangeKey, type StatAvg } from '../components/StatTable'
 
 interface PlayerAvg {
@@ -290,7 +290,7 @@ export function FreeAgents() {
               <li key={p.id}>
                 <ListRow
                   mine={drop === p.id}
-                  title={<>{p.name}<InjuryTag status={p.injuryStatus} /></>}
+                  title={<PlayerName name={p.name} injuryStatus={p.injuryStatus} />}
                   sub={[p.position, p.teamCode, fmtSalary(p.salary)].filter(Boolean).join(' · ')}
                   end={
                     <Button
