@@ -193,40 +193,6 @@ export function Standings() {
             </table>
           </div>
 
-          <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-2">
-            Raw totals
-          </h2>
-          <div className="overflow-x-auto rounded-lg border border-[var(--color-border)] bg-mns-card">
-            <table className="w-full text-sm tabular-nums whitespace-nowrap">
-              <thead>
-                <tr className="border-b border-[var(--color-border)] text-xs text-[var(--color-muted-foreground)]">
-                  <th className="sticky left-0 bg-mns-card text-left font-bold px-3 py-2">Team</th>
-                  {['FGM-FGA', 'FTM-FTA', 'AST', 'TO'].map((h) => (
-                    <th key={h} className="text-right font-bold px-2 py-2">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((t) => {
-                  const pr = t.production
-                  if (!pr) return null
-                  return (
-                    <tr key={t.id} className="border-b border-[var(--color-border)] last:border-b-0">
-                      <td className="sticky left-0 bg-mns-card px-3 py-1.5 font-semibold max-w-[8rem] truncate">
-                        {t.name}
-                      </td>
-                      <td className="px-2 text-right">{`${pr.fgm}-${pr.fga}`}</td>
-                      <td className="px-2 text-right">{`${pr.ftm}-${pr.fta}`}</td>
-                      <td className="px-2 text-right">{pr.ast}</td>
-                      <td className="px-2 text-right">{pr.tov}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
           <p className="mt-2 text-xs text-[var(--color-muted-foreground)]">
             Production counts every game a player on the CURRENT roster has played this season —
             a strength read, not the matchup score.
