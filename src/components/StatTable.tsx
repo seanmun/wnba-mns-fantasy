@@ -81,14 +81,19 @@ export function StatTable({
   stats,
   action,
   defaultSort = 'ppg',
+  maxSalary,
 }: {
   players: StatRowPlayer[]
   stats: Record<string, StatAvg>
   action?: (p: StatRowPlayer) => ReactNode
   defaultSort?: SortKey
+  /** The league's top salary — the 100% mark for the salary wash. */
+  maxSalary?: number
 }) {
   const [sortBy, setSortBy] = useState<SortKey>(defaultSort)
   const [asc, setAsc] = useState(false)
+  const salaryCeil =
+    maxSalary ?? Math.max(1, ...players.map((p) => p.salary ?? 0))
 
   const valueOf = (p: StatRowPlayer, k: SortKey): number =>
     k === 'salary' ? p.salary ?? 0 : stats[p.id]?.[k] ?? 0
@@ -138,7 +143,18 @@ export function StatTable({
             const a = stats[p.id]
             return (
               <tr key={p.id} className="border-b border-[var(--color-border)] last:border-b-0">
-                <td className="sticky left-0 bg-mns-card px-3 py-1.5 max-w-[11rem]">
+                <td className="sticky left-0 bg-mns-card px-3 py-1.5 max-w-[11rem] relative isolate">
+                  {p.salary != null && salaryCeil > 0 ? (
+                    <span
+                      aria-hidden
+                      className="absolute inset-y-0 left-0 -z-10 pointer-events-none"
+                      style={{
+                        width: `${Math.max(2, (p.salary / salaryCeil) * 100)}%`,
+                        background:
+                          'linear-gradient(to right, color-mix(in srgb, var(--color-key, #ffb000) 18%, transparent) 70%, transparent)',
+                      }}
+                    />
+                  ) : null}
                   <span className="block font-semibold truncate">
                     <PlayerName name={p.name} injuryStatus={p.injuryStatus} />
                   </span>

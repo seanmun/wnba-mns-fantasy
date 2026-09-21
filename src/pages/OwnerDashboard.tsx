@@ -306,6 +306,10 @@ export function OwnerDashboard() {
   const capUsed = roster.reduce((n, p) => n + (p.salary ?? 0), 0)
   const mine = team.owners.some((o) => o.userId != null && o.userId === user?.id)
 
+  // The 100% mark for the salary wash: the biggest salary anywhere in
+  // the league pool.
+  const salaryCeil = Math.max(1, ...players.map((p) => p.salary ?? 0))
+
   const today = etToday()
   const minDate = currentLeague?.config.season?.startDate ?? shiftDate(today, -7)
   const maxDate = shiftDate(today, 13)
@@ -546,10 +550,21 @@ export function OwnerDashboard() {
                                   ) : null}
                                   <td
                                     className={
-                                      'sticky bg-mns-card px-2 py-1.5 max-w-[10rem] ' +
+                                      'sticky bg-mns-card px-2 py-1.5 max-w-[10rem] relative isolate ' +
                                       (editable ? 'left-8' : 'left-0')
                                     }
                                   >
+                                    {p.salary != null ? (
+                                      <span
+                                        aria-hidden
+                                        className="absolute inset-y-0 left-0 -z-10 pointer-events-none"
+                                        style={{
+                                          width: `${Math.max(2, ((p.salary ?? 0) / salaryCeil) * 100)}%`,
+                                          background:
+                                            'linear-gradient(to right, color-mix(in srgb, var(--color-key, #ffb000) 18%, transparent) 70%, transparent)',
+                                        }}
+                                      />
+                                    ) : null}
                                     <span className="block font-semibold truncate">
                                       <PlayerName name={p.name} injuryStatus={p.injuryStatus} />
                                       {p.isRookie ? (

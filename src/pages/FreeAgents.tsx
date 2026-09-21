@@ -266,6 +266,11 @@ export function FreeAgents() {
             })
             .slice(0, 120)}
           stats={ranges?.[range] ?? {}}
+          maxSalary={Math.max(
+            1,
+            ...state.freeAgents.map((p) => p.salary ?? 0),
+            ...state.myRoster.map((p) => p.salary ?? 0)
+          )}
           action={(p) =>
             state.myTeamId ? (
               <Button
