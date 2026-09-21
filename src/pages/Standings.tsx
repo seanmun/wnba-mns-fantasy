@@ -9,14 +9,32 @@ interface StandingsTeamOwner {
   displayName: string | null
   email: string
 }
+interface Production {
+  pts: number
+  reb: number
+  ast: number
+  stl: number
+  blk: number
+  tpm: number
+  tov: number
+  fgm: number
+  fga: number
+  ftm: number
+  fta: number
+  fgPct: number
+  ftPct: number
+  ato: number
+}
 interface StandingsRow {
   id: string
   name: string
+  logo?: string | null
   owners: StandingsTeamOwner[]
   wins?: number
   losses?: number
   ties?: number
   pointsFor?: number
+  production?: Production
 }
 
 // The leaderboard, nothing else. Until matchups grade (the scoring
@@ -80,7 +98,7 @@ export function Standings() {
             : 'Records fill in once matchups count.'
         }
       />
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-2 mb-8">
         {sorted.map((t, i) => {
           const mine = t.owners?.some((o) => o.userId != null && o.userId === user?.id)
           return (
@@ -108,6 +126,113 @@ export function Standings() {
           )
         })}
       </ul>
+
+      {/* Category production: what each CURRENT roster has generated
+          this season, ratios from raw sums. Best in each column lit —
+          the research view (and the shape the assistant will read). */}
+      {sorted.some((t) => t.production && t.production.fga > 0) ? (
+        <>
+          <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-2">
+            Category production — season totals
+          </h2>
+          <div className="overflow-x-auto rounded-lg border border-[var(--color-border)] bg-mns-card mb-4">
+            <table className="w-full text-sm tabular-nums whitespace-nowrap">
+              <thead>
+                <tr className="border-b border-[var(--color-border)] text-xs text-[var(--color-muted-foreground)]">
+                  <th className="sticky left-0 bg-mns-card text-left font-bold px-3 py-2">Team</th>
+                  {['PTS', 'REB', 'AST', 'STL', 'BLK', '3PM', 'FG%', 'FT%', 'A/TO', 'TO'].map((h) => (
+                    <th key={h} className="text-right font-bold px-2 py-2">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((t) => {
+                  const pr = t.production
+                  if (!pr) return null
+                  const best = (k: keyof Production, lowIsGood = false) => {
+                    const vals = sorted.map((x) => x.production?.[k] ?? 0)
+                    const target = lowIsGood ? Math.min(...vals) : Math.max(...vals)
+                    return (pr[k] ?? 0) === target && vals.some((v) => v !== vals[0])
+                  }
+                  const cell = (k: keyof Production, v: string | number, lowIsGood = false) => (
+                    <td
+                      className={
+                        'px-2 text-right ' +
+                        (best(k, lowIsGood) ? 'font-bold text-[var(--color-accent)]' : '')
+                      }
+                    >
+                      {v}
+                    </td>
+                  )
+                  return (
+                    <tr key={t.id} className="border-b border-[var(--color-border)] last:border-b-0">
+                      <td className="sticky left-0 bg-mns-card px-3 py-1.5 font-semibold">
+                        <span className="flex items-center gap-1.5">
+                          {t.logo ? (
+                            <img src={t.logo} alt="" className="w-5 h-5 rounded-full object-cover" />
+                          ) : null}
+                          <span className="max-w-[7rem] truncate">{t.name}</span>
+                        </span>
+                      </td>
+                      {cell('pts', pr.pts)}
+                      {cell('reb', pr.reb)}
+                      {cell('ast', pr.ast)}
+                      {cell('stl', pr.stl)}
+                      {cell('blk', pr.blk)}
+                      {cell('tpm', pr.tpm)}
+                      {cell('fgPct', `${pr.fgPct}%`)}
+                      {cell('ftPct', `${pr.ftPct}%`)}
+                      {cell('ato', pr.ato)}
+                      {cell('tov', pr.tov, true)}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-2">
+            Raw totals
+          </h2>
+          <div className="overflow-x-auto rounded-lg border border-[var(--color-border)] bg-mns-card">
+            <table className="w-full text-sm tabular-nums whitespace-nowrap">
+              <thead>
+                <tr className="border-b border-[var(--color-border)] text-xs text-[var(--color-muted-foreground)]">
+                  <th className="sticky left-0 bg-mns-card text-left font-bold px-3 py-2">Team</th>
+                  {['FGM-FGA', 'FTM-FTA', 'AST', 'TO'].map((h) => (
+                    <th key={h} className="text-right font-bold px-2 py-2">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((t) => {
+                  const pr = t.production
+                  if (!pr) return null
+                  return (
+                    <tr key={t.id} className="border-b border-[var(--color-border)] last:border-b-0">
+                      <td className="sticky left-0 bg-mns-card px-3 py-1.5 font-semibold max-w-[8rem] truncate">
+                        {t.name}
+                      </td>
+                      <td className="px-2 text-right">{`${pr.fgm}-${pr.fga}`}</td>
+                      <td className="px-2 text-right">{`${pr.ftm}-${pr.fta}`}</td>
+                      <td className="px-2 text-right">{pr.ast}</td>
+                      <td className="px-2 text-right">{pr.tov}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-[var(--color-muted-foreground)]">
+            Production counts every game a player on the CURRENT roster has played this season —
+            a strength read, not the matchup score.
+          </p>
+        </>
+      ) : null}
     </div>
   )
 }

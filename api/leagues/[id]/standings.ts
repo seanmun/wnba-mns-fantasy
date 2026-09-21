@@ -1,8 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { eq } from 'drizzle-orm'
+import { eq, gte } from 'drizzle-orm'
+import { and } from 'drizzle-orm'
 import { verifyAuth } from '../../_middleware.js'
 import { db } from '../../_db.js'
-import { mnsPlayers, mnsTeamOwners, mnsTeams } from '../../../src/lib/db/schema.js'
+import { mnsPlayers, mnsPlayerStatLines, mnsTeamOwners, mnsTeams } from '../../../src/lib/db/schema.js'
 import { computeStandings } from '../../../src/lib/season/score.js'
 import { logger } from '../../_logger.js'
 
@@ -32,13 +33,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const rec = await computeStandings(db, leagueId)
     const salaries = await db
-      .select({ teamId: mnsPlayers.teamId, salary: mnsPlayers.salary })
+      .select({ teamId: mnsPlayers.teamId, salary: mnsPlayers.salary, id: mnsPlayers.id })
       .from(mnsPlayers)
       .where(eq(mnsPlayers.leagueId, leagueId))
     const salaryByTeam = new Map<string, number>()
+    const teamOfPlayer = new Map<string, string>()
     for (const p of salaries) {
       if (!p.teamId) continue
       salaryByTeam.set(p.teamId, (salaryByTeam.get(p.teamId) ?? 0) + (p.salary ?? 0))
+      teamOfPlayer.set(p.id, p.teamId)
+    }
+
+    // Season production per CURRENT roster — the research lens: what
+    // each roster generates in every category, ratios from raw sums.
+    const year = new Date().getFullYear()
+    const lines = await db
+      .select()
+      .from(mnsPlayerStatLines)
+      .where(and(eq(mnsPlayerStatLines.leagueId, leagueId), gte(mnsPlayerStatLines.date, `${year}-01-01`)))
+    type Prod = { pts: number; reb: number; ast: number; stl: number; blk: number; tpm: number; tov: number; fgm: number; fga: number; ftm: number; fta: number }
+    const zeroProd = (): Prod => ({ pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tpm: 0, tov: 0, fgm: 0, fga: 0, ftm: 0, fta: 0 })
+    const prodByTeam = new Map<string, Prod>()
+    for (const l of lines) {
+      const teamId = teamOfPlayer.get(l.playerId)
+      if (!teamId) continue
+      const t = prodByTeam.get(teamId) ?? zeroProd()
+      t.pts += l.pts; t.reb += l.reb; t.ast += l.ast; t.stl += l.stl; t.blk += l.blk
+      t.tpm += l.tpm; t.tov += l.tov; t.fgm += l.fgm; t.fga += l.fga; t.ftm += l.ftm; t.fta += l.fta
+      prodByTeam.set(teamId, t)
     }
     const rows = teams.map((t) => {
       const r = rec.get(t.id) ?? { wins: 0, losses: 0, ties: 0, pointsFor: 0 }
@@ -56,6 +78,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ties: r.ties,
         pointsFor: r.pointsFor,
         salary: salaryByTeam.get(t.id) ?? 0,
+        production: (() => {
+          const pr = prodByTeam.get(t.id) ?? zeroProd()
+          return {
+            ...pr,
+            fgPct: pr.fga > 0 ? Math.round((pr.fgm / pr.fga) * 1000) / 10 : 0,
+            ftPct: pr.fta > 0 ? Math.round((pr.ftm / pr.fta) * 1000) / 10 : 0,
+            ato: pr.tov > 0 ? Math.round((pr.ast / pr.tov) * 100) / 100 : pr.ast,
+          }
+        })(),
       }
     })
     return res.status(200).json(rows)
