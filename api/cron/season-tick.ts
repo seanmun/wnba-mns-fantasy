@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { eq } from 'drizzle-orm'
+import { inArray } from 'drizzle-orm'
 import { db } from '../_db.js'
 import { mnsLeagues } from '../../src/lib/db/schema.js'
 import { logger } from '../_logger.js'
@@ -7,6 +7,7 @@ import { ingestEspnDay, ingestInjuries, ingestSimDay } from '../../src/lib/seaso
 import { easternToday, matchupWeekFor, scoreLeagueWeek } from '../../src/lib/season/score.js'
 import { processWaivers } from '../../src/lib/season/waivers.js'
 import { applyLineupsForToday } from '../../src/lib/season/lineups.js'
+import { advancePlayoffs, maybeStartPlayoffs } from '../../src/lib/season/playoffs.js'
 import type { LeagueConfig } from '../../src/types/leagueConfig.js'
 
 // The season heartbeat, hourly. For every league in its regular season:
@@ -27,10 +28,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const today = easternToday(now)
   const yesterday = easternToday(new Date(now.getTime() - 24 * 3600 * 1000))
 
+  // Playoffs tick exactly like the regular season — ingest, score,
+  // waivers — plus the phase transitions at the end of the pass.
   const leagues = await db
     .select()
     .from(mnsLeagues)
-    .where(eq(mnsLeagues.leaguePhase, 'regular_season'))
+    .where(inArray(mnsLeagues.leaguePhase, ['regular_season', 'playoffs']))
 
   const report: Array<Record<string, unknown>> = []
   for (const league of leagues) {
@@ -81,6 +84,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // players never really get hurt).
       const injuries = source === 'espn' ? await ingestInjuries(db, league.id) : { updated: 0 }
 
+      // Phase transitions: regular season → playoffs once everything
+      // is banked; round → round → champion as playoff weeks final.
+      const started = await maybeStartPlayoffs(db, league, config, now)
+      const playoff = await advancePlayoffs(
+        db,
+        started ? { ...league, leaguePhase: 'playoffs' } : league,
+        config,
+        now
+      )
+
       if (unmatched.length) {
         logger.error('season-tick: unmatched ESPN names', {
           leagueId: league.id,
@@ -96,6 +109,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         waiversGranted: waivers.granted,
         waiversFailed: waivers.failed,
         injuriesUpdated: injuries.updated,
+        playoffsStarted: started,
+        playoffsAdvanced: playoff.advanced,
+        ...(playoff.champion ? { champion: playoff.champion } : {}),
         unmatched: [...new Set(unmatched)].length,
       })
     } catch (err) {

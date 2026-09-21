@@ -496,6 +496,10 @@ export const mnsMatchups = wnbaSchema.table(
     // scheduled → live (week underway) → final (week over, records
     // counted). Written by the scoring pass, read by standings.
     status: text('status').notNull().default('scheduled'),
+    // Playoff games score like any week but never bank into the
+    // regular-season record; label names the round.
+    isPlayoff: boolean('is_playoff').notNull().default(false),
+    label: text('label'),
     // Category-by-category detail from computeMatchupResult, so the
     // matchup page can show WHY someone is up 6-3 without recomputing.
     result: jsonb('result').$type<Record<string, unknown> | null>(),

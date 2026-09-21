@@ -180,7 +180,13 @@ export async function computeStandings(db: Db, leagueId: string) {
   const matchups = await db
     .select()
     .from(mnsMatchups)
-    .where(and(eq(mnsMatchups.leagueId, leagueId), sql`${mnsMatchups.status} != 'scheduled'`))
+    .where(
+      and(
+        eq(mnsMatchups.leagueId, leagueId),
+        eq(mnsMatchups.isPlayoff, false),
+        sql`${mnsMatchups.status} != 'scheduled'`
+      )
+    )
 
   const rec = new Map<string, { wins: number; losses: number; ties: number; pointsFor: number }>()
   const bump = (teamId: string, r: { wins: number; losses: number; ties: number }, catWins: number) => {

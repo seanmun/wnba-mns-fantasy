@@ -44,6 +44,8 @@ interface MatchupPayload {
     id: string
     matchupWeek: number
     status: string
+    isPlayoff?: boolean
+    label?: string | null
     homeTeamId: string
     awayTeamId: string
     homeTeamName: string
@@ -221,7 +223,7 @@ export function MatchupDetail() {
         <PageHeader
           back={`/league/${leagueId}`}
           backLabel="League home"
-          eyebrow={`Week ${matchup.matchupWeek} · ${matchup.status === 'final' ? 'Final' : matchup.status === 'live' ? 'Live' : 'Scheduled'}`}
+          eyebrow={`${matchup.label ?? `Week ${matchup.matchupWeek}`} · ${matchup.status === 'final' ? 'Final' : matchup.status === 'live' ? 'Live' : 'Scheduled'}`}
           title="Matchup"
           status={`Categories won · ${matchup.startDate} to ${matchup.endDate}`}
         />

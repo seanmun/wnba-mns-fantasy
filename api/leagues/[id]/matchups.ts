@@ -118,6 +118,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           id: m.id,
           matchupWeek: m.matchupWeek,
           status: m.status,
+          isPlayoff: m.isPlayoff,
+          label: m.label,
           homeTeamId: m.homeTeamId,
           awayTeamId: m.awayTeamId,
           homeTeamName: teamName.get(m.homeTeamId) ?? '',
@@ -162,6 +164,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       matchups: matchups.map((m) => ({
         id: m.id,
         status: m.status,
+        isPlayoff: m.isPlayoff,
+        label: m.label,
         homeTeamId: m.homeTeamId,
         awayTeamId: m.awayTeamId,
         homeTeamName: teamName.get(m.homeTeamId) ?? '',
