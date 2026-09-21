@@ -156,7 +156,7 @@ export function StatTable({
                       style={{
                         width: `${Math.max(2, (p.salary / salaryCeil) * 100)}%`,
                         background:
-                          'linear-gradient(to right, color-mix(in srgb, var(--color-key, #ffb000) 18%, transparent) 70%, transparent)',
+                          'linear-gradient(to right, color-mix(in srgb, var(--color-accent) 18%, transparent) 70%, transparent)',
                       }}
                     />
                   ) : null}
