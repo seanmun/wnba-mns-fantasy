@@ -5,6 +5,7 @@ import { useApi } from '../hooks/useApi'
 import { Button, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
 import { useLeague } from '../contexts/LeagueContext'
 import { PlayerName } from '../components/InjuryTag'
+import type { StatAvg } from '../components/StatTable'
 
 interface TeamRow {
   id: string
@@ -57,6 +58,7 @@ export function TradeMachine() {
   const [get, setGet] = useState<string[]>([])
   const [givePicks, setGivePicks] = useState<string[]>([])
   const [getPicks, setGetPicks] = useState<string[]>([])
+  const [seasonStats, setSeasonStats] = useState<Record<string, StatAvg>>({})
   const [busy, setBusy] = useState(false)
 
   const refresh = () => {
@@ -71,6 +73,9 @@ export function TradeMachine() {
         setTrades(tr)
       })
       .catch((e: Error) => setError(e.message))
+    apiFetch<{ season: Record<string, StatAvg> }>(`/api/leagues/${leagueId}/stats`)
+      .then((r) => setSeasonStats(r.season ?? {}))
+      .catch(() => setSeasonStats({}))
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(refresh, [leagueId])
@@ -212,7 +217,33 @@ export function TradeMachine() {
                         <ListRow
                           mine={sel.includes(p.id)}
                           title={<PlayerName name={p.name} injuryStatus={p.injuryStatus} />}
-                          sub={[p.position, p.teamCode, fmtSalary(p.salary)].filter(Boolean).join(' · ')}
+                          sub={
+                            <>
+                              {[p.position, p.teamCode, fmtSalary(p.salary)].filter(Boolean).join(' · ')}
+                              {seasonStats[p.id] ? (
+                                <span className="block tabular-nums">
+                                  {seasonStats[p.id].ppg}p {seasonStats[p.id].rpg}r {seasonStats[p.id].apg}a
+                                  {' · '}{seasonStats[p.id].fgPct}%
+                                  {seasonStats[p.id].cat != null ? (
+                                    <>
+                                      {' · CAT '}
+                                      <b
+                                        style={{
+                                          color:
+                                            (seasonStats[p.id].cat ?? 0) >= 0
+                                              ? 'var(--color-accent)'
+                                              : 'var(--color-pick-loss, #ff453a)',
+                                        }}
+                                      >
+                                        {(seasonStats[p.id].cat ?? 0) >= 0 ? '+' : ''}
+                                        {seasonStats[p.id].cat?.toFixed(2)}
+                                      </b>
+                                    </>
+                                  ) : null}
+                                </span>
+                              ) : null}
+                            </>
+                          }
                           end={
                             <Button variant={sel.includes(p.id) ? 'primary' : 'quiet'} onClick={() => onToggle(p.id)}>
                               {sel.includes(p.id) ? 'In' : 'Add'}
@@ -250,6 +281,10 @@ export function TradeMachine() {
           ) : (
             <p className="text-sm text-[var(--color-muted-foreground)]">Pick a team to deal with.</p>
           )}
+
+          {withTeam && (give.length > 0 || get.length > 0) ? (
+            <CategorySwing stats={seasonStats} give={give} get={get} />
+          ) : null}
 
           {withTeam && (give.length + givePicks.length > 0 || get.length + getPicks.length > 0) ? (
             <CapCalculator
@@ -380,6 +415,81 @@ function CapCalculator({
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// What the deal does to YOUR nightly categories, from season averages:
+// incoming minus outgoing, per game. The other side sees the mirror
+// image. Ratio cats shown as simple average shift — a guide, not the
+// scorer.
+function CategorySwing({
+  stats,
+  give,
+  get,
+}: {
+  stats: Record<string, StatAvg>
+  give: string[]
+  get: string[]
+}) {
+  const sum = (ids: string[], k: 'ppg' | 'rpg' | 'apg' | 'spg' | 'bpg' | 'tpg') =>
+    ids.reduce((n, id) => n + (stats[id]?.[k] ?? 0), 0)
+  const avgOf = (ids: string[], k: 'fgPct') => {
+    const vals = ids.map((id) => stats[id]?.[k]).filter((v): v is number => v != null)
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
+  }
+  const catSum = (ids: string[]) => ids.reduce((n, id) => n + (stats[id]?.cat ?? 0), 0)
+
+  const rows: Array<[string, number | null, string?]> = [
+    ['PTS', sum(get, 'ppg') - sum(give, 'ppg')],
+    ['REB', sum(get, 'rpg') - sum(give, 'rpg')],
+    ['AST', sum(get, 'apg') - sum(give, 'apg')],
+    ['STL', sum(get, 'spg') - sum(give, 'spg')],
+    ['BLK', sum(get, 'bpg') - sum(give, 'bpg')],
+    ['3PM', sum(get, 'tpg') - sum(give, 'tpg')],
+    [
+      'FG%',
+      avgOf(get, 'fgPct') != null || avgOf(give, 'fgPct') != null
+        ? (avgOf(get, 'fgPct') ?? 0) - (avgOf(give, 'fgPct') ?? 0)
+        : null,
+      '%',
+    ],
+    ['CAT', catSum(get) - catSum(give)],
+  ]
+
+  return (
+    <div className="mt-4 rounded-lg border border-[var(--color-border)] bg-mns-card p-3">
+      <p className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-2">
+        Your category swing (per game, season averages)
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {rows.map(([label, v, unit]) => {
+          const up = (v ?? 0) > 0.001
+          const down = (v ?? 0) < -0.001
+          return (
+            <span
+              key={label}
+              className="text-xs rounded-full px-2.5 py-1.5 border border-[var(--color-border)] tabular-nums"
+            >
+              {label}{' '}
+              <b
+                style={{
+                  color: up
+                    ? 'var(--color-accent)'
+                    : down
+                      ? 'var(--color-pick-loss, #ff453a)'
+                      : 'var(--color-muted-foreground)',
+                }}
+              >
+                {v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(unit === '%' ? 1 : label === 'CAT' ? 2 : 1)}${unit ?? ''}`}
+              </b>
+            </span>
+          )
+        })}
+      </div>
+      <p className="mt-1.5 text-[0.68rem] text-[var(--color-muted-foreground)]">
+        The other side sees the mirror image. FG% is a simple average shift, not volume-weighted.
+      </p>
     </div>
   )
 }
