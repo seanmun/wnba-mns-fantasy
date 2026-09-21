@@ -1,16 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { and, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { verifyAuth, canManageLeague } from '../../../_middleware.js'
 import { db } from '../../../_db.js'
-import { mnsPlayers, mnsTeams } from '../../../../src/lib/db/schema.js'
+import { mnsPlayers, mnsPlayerStatLines, mnsTeams } from '../../../../src/lib/db/schema.js'
 import { updatePlayerSchema, parseBody } from '../../../_validation.js'
 import { logger } from '../../../_logger.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'PATCH') {
-    return res.status(405).json({ error: 'Method not allowed' })
-  }
-
   const userId = await verifyAuth(req)
   if (!userId) return res.status(401).json({ error: 'Unauthorized' })
 
@@ -18,6 +14,67 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const playerId = req.query.playerId as string | undefined
   if (!leagueId || !playerId) {
     return res.status(400).json({ error: 'Missing league id or player id' })
+  }
+
+  // GET — the player card: details, injury news, recent game log.
+  if (req.method === 'GET') {
+    try {
+      const [p] = await db
+        .select()
+        .from(mnsPlayers)
+        .where(and(eq(mnsPlayers.leagueId, leagueId), eq(mnsPlayers.id, playerId)))
+        .limit(1)
+      if (!p) return res.status(404).json({ error: 'Player not found' })
+      let teamName: string | null = null
+      if (p.teamId) {
+        const [t] = await db
+          .select({ name: mnsTeams.name })
+          .from(mnsTeams)
+          .where(eq(mnsTeams.id, p.teamId))
+          .limit(1)
+        teamName = t?.name ?? null
+      }
+      const log = await db
+        .select()
+        .from(mnsPlayerStatLines)
+        .where(
+          and(eq(mnsPlayerStatLines.leagueId, leagueId), eq(mnsPlayerStatLines.playerId, playerId))
+        )
+        .orderBy(desc(mnsPlayerStatLines.date))
+        .limit(12)
+      return res.status(200).json({
+        player: {
+          id: p.id,
+          name: p.name,
+          position: p.position,
+          teamCode: p.teamCode,
+          salary: p.salary,
+          slot: p.slot,
+          isRookie: p.isRookie,
+          teamId: p.teamId,
+          teamName,
+          injuryStatus: p.injuryStatus,
+          injuryNote: p.injuryNote,
+          injuryUpdatedAt: p.injuryUpdatedAt,
+        },
+        log: log.map((l) => ({
+          date: l.date,
+          min: l.min, pts: l.pts, reb: l.reb, ast: l.ast, stl: l.stl, blk: l.blk,
+          tpm: l.tpm, fgm: l.fgm, fga: l.fga, tov: l.tov,
+        })),
+      })
+    } catch (err) {
+      logger.error('GET player card failed', {
+        leagueId,
+        playerId,
+        err: err instanceof Error ? err.message : String(err),
+      })
+      return res.status(500).json({ error: 'Failed to load the player' })
+    }
+  }
+
+  if (req.method !== 'PATCH') {
+    return res.status(405).json({ error: 'Method not allowed' })
   }
 
   if (!(await canManageLeague(userId, leagueId))) {

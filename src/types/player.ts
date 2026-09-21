@@ -37,6 +37,7 @@ export interface Player {
   onIR: boolean
   injuryStatus?: string | null
   injuryNote?: string | null
+  injuryUpdatedAt?: string | null
   isRookie: boolean
   isInternationalStash: boolean
   intEligible: boolean

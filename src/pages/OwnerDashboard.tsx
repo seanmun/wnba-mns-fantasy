@@ -8,6 +8,7 @@ import { Button, Chip, EmptyState, PageHeader, Skeleton } from '../ui/components
 import { useLeague } from '../contexts/LeagueContext'
 import { PlayerName } from '../components/InjuryTag'
 import { RangeChips, type RangeKey, type StatAvg } from '../components/StatTable'
+import { PlayerCard, isFreshNews } from '../components/PlayerCard'
 
 interface OwnerInfo {
   userId: string | null
@@ -39,6 +40,7 @@ interface RosterPlayer {
   isRookie: boolean
   injuryStatus?: string | null
   injuryNote?: string | null
+  injuryUpdatedAt?: string | null
   keeperRound?: number | null
   avg?: {
     gp: number
@@ -211,6 +213,7 @@ export function OwnerDashboard() {
   const [ranges, setRanges] = useState<Record<string, Record<string, StatAvg> | null> | null>(null)
   const [sortBy, setSortBy] = useState<'gp' | 'ppg' | 'rpg' | 'apg' | 'spg' | 'bpg' | 'tpg' | 'fgPct' | 'salary'>('ppg')
   const [asc, setAsc] = useState(false)
+  const [cardId, setCardId] = useState<string | null>(null)
 
   const load = () => {
     Promise.all([
@@ -565,16 +568,32 @@ export function OwnerDashboard() {
                                         }}
                                       />
                                     ) : null}
-                                    <span className="block font-semibold truncate">
-                                      <PlayerName name={p.name} injuryStatus={p.injuryStatus} />
-                                      {p.isRookie ? (
-                                        <span className="ml-1"><Chip tone="accent">R</Chip></span>
-                                      ) : null}
-                                    </span>
-                                    <span className="block text-xs text-[var(--color-muted-foreground)] truncate">
-                                      {[p.position, p.teamCode].filter(Boolean).join(' · ')}
-                                      {day ? <> — {gameNote(p)}</> : null}
-                                    </span>
+                                    {isFreshNews(p.injuryUpdatedAt, p.injuryStatus) ? (
+                                      <span
+                                        aria-hidden
+                                        className="absolute top-0 left-0"
+                                        style={{
+                                          borderTop: '7px solid var(--color-key, #ffb000)',
+                                          borderRight: '7px solid transparent',
+                                        }}
+                                      />
+                                    ) : null}
+                                    <button
+                                      onClick={() => setCardId(p.id)}
+                                      className="block w-full text-left"
+                                      aria-label={`Open ${p.name}'s card`}
+                                    >
+                                      <span className="block font-semibold truncate">
+                                        <PlayerName name={p.name} injuryStatus={p.injuryStatus} />
+                                        {p.isRookie ? (
+                                          <span className="ml-1"><Chip tone="accent">R</Chip></span>
+                                        ) : null}
+                                      </span>
+                                      <span className="block text-xs text-[var(--color-muted-foreground)] truncate">
+                                        {[p.position, p.teamCode].filter(Boolean).join(' · ')}
+                                        {day ? <> — {gameNote(p)}</> : null}
+                                      </span>
+                                    </button>
                                   </td>
                                   <td className="px-2 text-right font-semibold">{a?.ppg ?? '—'}</td>
                                   <td className="px-2 text-right">{a?.rpg ?? '—'}</td>
@@ -634,6 +653,8 @@ export function OwnerDashboard() {
           )}
         </>
       )}
+
+      <PlayerCard leagueId={leagueId} playerId={cardId} ranges={ranges} onClose={() => setCardId(null)} />
 
       {/* Draft capital is roster truth too — the picks this team can
           deal or use, three drafts out. */}

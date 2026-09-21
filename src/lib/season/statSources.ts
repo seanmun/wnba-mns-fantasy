@@ -227,12 +227,20 @@ export async function ingestInjuries(
   }
 
   const pool = (await db
-    .select({ id: mnsPlayers.id, name: mnsPlayers.name, injuryStatus: mnsPlayers.injuryStatus })
+    .select({
+      id: mnsPlayers.id,
+      name: mnsPlayers.name,
+      injuryStatus: mnsPlayers.injuryStatus,
+      injuryNote: mnsPlayers.injuryNote,
+      injuryUpdatedAt: mnsPlayers.injuryUpdatedAt,
+    })
     .from(mnsPlayers)
     .where(eq(mnsPlayers.leagueId, leagueId))) as Array<{
     id: string
     name: string
     injuryStatus: string | null
+    injuryNote: string | null
+    injuryUpdatedAt: Date | null
   }>
   const matchedNames = new Set<string>()
   let updated = 0
@@ -240,15 +248,23 @@ export async function ingestInjuries(
     const hit = byName.get(normName(p.name))
     if (hit) {
       matchedNames.add(normName(p.name))
+      // Only a CHANGED report is news — same status and note leaves
+      // the freshness stamp alone.
+      const changed =
+        p.injuryStatus !== hit.status || p.injuryNote !== hit.note || p.injuryUpdatedAt == null
       await db
         .update(mnsPlayers)
-        .set({ injuryStatus: hit.status, injuryNote: hit.note })
+        .set({
+          injuryStatus: hit.status,
+          injuryNote: hit.note,
+          ...(changed ? { injuryUpdatedAt: new Date() } : {}),
+        })
         .where(eq(mnsPlayers.id, p.id))
-      updated++
+      if (changed) updated++
     } else if (p.injuryStatus != null) {
       await db
         .update(mnsPlayers)
-        .set({ injuryStatus: null, injuryNote: null })
+        .set({ injuryStatus: null, injuryNote: null, injuryUpdatedAt: new Date() })
         .where(eq(mnsPlayers.id, p.id))
       updated++
     }

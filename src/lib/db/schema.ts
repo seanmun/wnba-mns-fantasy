@@ -174,6 +174,9 @@ export const mnsPlayers = wnbaSchema.table(
     // 'Day-To-Day', ...) and the one-line note. Null = no report.
     injuryStatus: text('injury_status'),
     injuryNote: text('injury_note'),
+    // Stamped when the report CHANGES for this player — "new news"
+    // indicators key off recency of this, not of the tick.
+    injuryUpdatedAt: timestamp('injury_updated_at'),
     isRookie: boolean('is_rookie').notNull().default(false),
     isInternationalStash: boolean('is_international_stash')
       .notNull()

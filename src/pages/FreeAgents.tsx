@@ -6,6 +6,7 @@ import { Plus } from 'lucide-react'
 import { Button, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
 import { PlayerName } from '../components/InjuryTag'
 import { RangeChips, StatTable, type RangeKey, type StatAvg } from '../components/StatTable'
+import { PlayerCard } from '../components/PlayerCard'
 
 interface PlayerAvg {
   gp: number
@@ -24,6 +25,7 @@ interface WirePlayer {
   teamCode: string | null
   salary: number | null
   injuryStatus?: string | null
+  injuryUpdatedAt?: string | null
   avg: PlayerAvg | null
 }
 interface WireState {
@@ -61,6 +63,7 @@ export function FreeAgents() {
   const [ranges, setRanges] = useState<Record<string, Record<string, StatAvg> | null> | null>(null)
   const [range, setRange] = useState<RangeKey>('season')
   const [search, setSearch] = useState('')
+  const [cardId, setCardId] = useState<string | null>(null)
   const [drop, setDrop] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -266,6 +269,7 @@ export function FreeAgents() {
             })
             .slice(0, 120)}
           stats={ranges?.[range] ?? {}}
+          onSelect={(p) => setCardId(p.id)}
           maxSalary={Math.max(
             1,
             ...state.freeAgents.map((p) => p.salary ?? 0),
@@ -284,6 +288,8 @@ export function FreeAgents() {
           }
         />
       </div>
+
+      <PlayerCard leagueId={leagueId} playerId={cardId} ranges={ranges} onClose={() => setCardId(null)} />
 
       {state.myTeamId ? (
         <>

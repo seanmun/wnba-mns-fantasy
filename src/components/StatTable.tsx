@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { PlayerName } from './InjuryTag'
+import { isFreshNews } from './PlayerCard'
 
 // The research table both roster surfaces share: sortable columns,
 // range-filtered averages, the player column pinned while the numbers
@@ -23,6 +24,7 @@ export interface StatRowPlayer {
   teamCode: string | null
   salary: number | null
   injuryStatus?: string | null
+  injuryUpdatedAt?: string | null
 }
 
 export type RangeKey = 'season' | 'last30' | 'last10' | 'lastSeason'
@@ -82,6 +84,7 @@ export function StatTable({
   action,
   defaultSort = 'ppg',
   maxSalary,
+  onSelect,
 }: {
   players: StatRowPlayer[]
   stats: Record<string, StatAvg>
@@ -89,6 +92,8 @@ export function StatTable({
   defaultSort?: SortKey
   /** The league's top salary — the 100% mark for the salary wash. */
   maxSalary?: number
+  /** Tapping a player's name opens their card. */
+  onSelect?: (p: StatRowPlayer) => void
 }) {
   const [sortBy, setSortBy] = useState<SortKey>(defaultSort)
   const [asc, setAsc] = useState(false)
@@ -155,12 +160,29 @@ export function StatTable({
                       }}
                     />
                   ) : null}
-                  <span className="block font-semibold truncate">
-                    <PlayerName name={p.name} injuryStatus={p.injuryStatus} />
-                  </span>
-                  <span className="block text-xs text-[var(--color-muted-foreground)]">
-                    {[p.position, p.teamCode].filter(Boolean).join(' · ')}
-                  </span>
+                  {isFreshNews(p.injuryUpdatedAt, p.injuryStatus) ? (
+                    <span
+                      aria-hidden
+                      className="absolute top-0 left-0"
+                      style={{
+                        borderTop: '7px solid var(--color-key, #ffb000)',
+                        borderRight: '7px solid transparent',
+                      }}
+                    />
+                  ) : null}
+                  <button
+                    onClick={() => onSelect?.(p)}
+                    disabled={!onSelect}
+                    className="block w-full text-left"
+                    aria-label={`Open ${p.name}'s card`}
+                  >
+                    <span className="block font-semibold truncate">
+                      <PlayerName name={p.name} injuryStatus={p.injuryStatus} />
+                    </span>
+                    <span className="block text-xs text-[var(--color-muted-foreground)]">
+                      {[p.position, p.teamCode].filter(Boolean).join(' · ')}
+                    </span>
+                  </button>
                 </td>
                 <td className="px-2 text-right font-semibold">{a?.ppg ?? '—'}</td>
                 <td className="px-2 text-right">{a?.rpg ?? '—'}</td>
