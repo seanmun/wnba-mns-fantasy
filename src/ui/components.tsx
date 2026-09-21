@@ -484,17 +484,20 @@ export function Sheet({
   onClose,
   label,
   children,
+  compact,
 }: {
   open: boolean
   onClose: () => void
   label: string
   children: ReactNode
+  /** Size to content instead of the chat sheet's near-full height. */
+  compact?: boolean
 }) {
   if (!open) return null
   return (
     <div className="mns-sheet-backdrop" onClick={onClose}>
       <div
-        className="mns-sheet"
+        className={'mns-sheet' + (compact ? ' mns-sheet--compact' : '')}
         role="dialog"
         aria-modal="true"
         aria-label={label}

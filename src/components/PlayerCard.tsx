@@ -79,9 +79,9 @@ export function PlayerCard({
   }, [apiFetch, leagueId, playerId])
 
   return (
-    <Sheet open={!!playerId} onClose={onClose} label="Player card">
+    <Sheet compact open={!!playerId} onClose={onClose} label="Player card">
       {/* The card stays hand-sized; anything past that scrolls inside. */}
-      <div className="max-h-[65vh] overflow-y-auto overscroll-contain">
+      <div className="max-h-[65vh] overflow-y-auto overscroll-contain px-4">
         <PlayerCardInner playerId={playerId} ranges={ranges} data={data} error={error} />
       </div>
     </Sheet>
