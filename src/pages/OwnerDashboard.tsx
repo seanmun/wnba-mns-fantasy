@@ -475,7 +475,6 @@ export function OwnerDashboard() {
                           </th>
                           {(
                             [
-                              ['gp', 'GP'],
                               ['ppg', 'PTS'],
                               ['rpg', 'REB'],
                               ['apg', 'AST'],
@@ -483,6 +482,7 @@ export function OwnerDashboard() {
                               ['bpg', 'BLK'],
                               ['tpg', '3PM'],
                               ['fgPct', 'FG%'],
+                              ['gp', 'GP'],
                               ['salary', '$'],
                             ] as const
                           ).map(([k, h]) => (
@@ -561,7 +561,6 @@ export function OwnerDashboard() {
                                       {day ? <> — {gameNote(p)}</> : null}
                                     </span>
                                   </td>
-                                  <td className="px-2 text-right">{a?.gp ?? 0}</td>
                                   <td className="px-2 text-right font-semibold">{a?.ppg ?? '—'}</td>
                                   <td className="px-2 text-right">{a?.rpg ?? '—'}</td>
                                   <td className="px-2 text-right">{a?.apg ?? '—'}</td>
@@ -569,6 +568,7 @@ export function OwnerDashboard() {
                                   <td className="px-2 text-right">{a?.bpg ?? '—'}</td>
                                   <td className="px-2 text-right">{a?.tpg ?? '—'}</td>
                                   <td className="px-2 text-right">{a?.fgPct != null ? `${a.fgPct}%` : '—'}</td>
+                                  <td className="px-2 text-right">{a?.gp ?? 0}</td>
                                   <td className="px-2 text-right text-[var(--color-muted-foreground)]">
                                     {p.salary != null ? fmtM(p.salary) : '—'}
                                   </td>

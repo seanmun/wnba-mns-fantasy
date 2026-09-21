@@ -65,7 +65,6 @@ export function RangeChips({
 
 type SortKey = keyof StatAvg | 'salary'
 const COLS: Array<[SortKey, string]> = [
-  ['gp', 'GP'],
   ['ppg', 'PTS'],
   ['rpg', 'REB'],
   ['apg', 'AST'],
@@ -73,6 +72,7 @@ const COLS: Array<[SortKey, string]> = [
   ['bpg', 'BLK'],
   ['tpg', '3PM'],
   ['fgPct', 'FG%'],
+  ['gp', 'GP'],
   ['salary', '$'],
 ]
 
@@ -146,7 +146,6 @@ export function StatTable({
                     {[p.position, p.teamCode].filter(Boolean).join(' · ')}
                   </span>
                 </td>
-                <td className="px-2 text-right">{a?.gp ?? 0}</td>
                 <td className="px-2 text-right font-semibold">{a?.ppg ?? '—'}</td>
                 <td className="px-2 text-right">{a?.rpg ?? '—'}</td>
                 <td className="px-2 text-right">{a?.apg ?? '—'}</td>
@@ -154,6 +153,7 @@ export function StatTable({
                 <td className="px-2 text-right">{a?.bpg ?? '—'}</td>
                 <td className="px-2 text-right">{a?.tpg ?? '—'}</td>
                 <td className="px-2 text-right">{a?.fgPct != null ? `${a.fgPct}%` : '—'}</td>
+                <td className="px-2 text-right">{a?.gp ?? 0}</td>
                 <td className="px-2 text-right text-[var(--color-muted-foreground)]">
                   {p.salary != null ? `$${(p.salary / 1000).toFixed(0)}k` : '—'}
                 </td>
