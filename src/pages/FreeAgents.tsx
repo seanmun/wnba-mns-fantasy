@@ -5,6 +5,7 @@ import { useApi } from '../hooks/useApi'
 import { Plus } from 'lucide-react'
 import { Button, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
 import { InjuryTag } from '../components/InjuryTag'
+import { RangeChips, StatTable, type RangeKey, type StatAvg } from '../components/StatTable'
 
 interface PlayerAvg {
   gp: number
@@ -45,10 +46,6 @@ interface WireState {
 }
 
 const fmtSalary = (n: number | null) => (n != null ? `$${(n / 1000).toFixed(0)}k` : '')
-const fmtAvg = (a: PlayerAvg | null) =>
-  a && a.gp > 0
-    ? `${a.gp}g · ${a.ppg}p ${a.rpg}r ${a.apg}a · ${a.fgPct}% FG`
-    : 'no games on file'
 
 // Free agency, two gears set by the day's real schedule: OPEN until
 // the first tipoff (pick one, name the drop, it's instant), then
@@ -61,7 +58,8 @@ export function FreeAgents() {
   const [state, setState] = useState<WireState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [adds, setAdds] = useState<string[]>([])
-  const [sortBy, setSortBy] = useState<'ppg' | 'rpg' | 'apg' | 'salary'>('ppg')
+  const [ranges, setRanges] = useState<Record<string, Record<string, StatAvg> | null> | null>(null)
+  const [range, setRange] = useState<RangeKey>('season')
   const [search, setSearch] = useState('')
   const [drop, setDrop] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -70,6 +68,9 @@ export function FreeAgents() {
     apiFetch<WireState>(`/api/leagues/${leagueId}/waivers`)
       .then(setState)
       .catch((e: Error) => setError(e.message))
+    apiFetch<Record<string, Record<string, StatAvg> | null>>(`/api/leagues/${leagueId}/stats`)
+      .then(setRanges)
+      .catch(() => setRanges({}))
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(refresh, [leagueId])
@@ -239,34 +240,11 @@ export function FreeAgents() {
         </div>
       ) : null}
 
-      <div className="flex items-baseline justify-between mb-2">
+      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
         <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-muted-foreground)]">
           Available
         </h2>
-        <div className="flex gap-1">
-          {(
-            [
-              ['ppg', 'Pts'],
-              ['rpg', 'Reb'],
-              ['apg', 'Ast'],
-              ['salary', '$'],
-            ] as const
-          ).map(([k, label]) => (
-            <button
-              key={k}
-              onClick={() => setSortBy(k)}
-              aria-pressed={sortBy === k}
-              className={
-                'text-xs rounded-full px-2.5 min-h-[2.25rem] border ' +
-                (sortBy === k
-                  ? 'border-[var(--color-accent)] text-[var(--color-accent)] font-bold'
-                  : 'border-[var(--color-border)] text-[var(--color-muted-foreground)]')
-              }
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <RangeChips value={range} onChange={setRange} hasLastSeason={!!ranges?.lastSeason} />
       </div>
       <input
         value={search}
@@ -274,43 +252,33 @@ export function FreeAgents() {
         placeholder="Search players…"
         className="w-full mb-3 px-4 py-2.5 min-h-[3rem] rounded-lg bg-mns-card border border-[var(--color-border-interactive)] text-[var(--color-foreground)] placeholder:text-[var(--color-muted-foreground)] focus:outline-none focus:border-[var(--color-accent)]"
       />
-      <ul className="flex flex-col gap-1.5 mb-6">
-        {[...state.freeAgents]
-          .filter((p) => {
-            const q = search.trim().toLowerCase()
-            if (!q) return true
-            return (
-              p.name.toLowerCase().includes(q) ||
-              (p.teamCode ?? '').toLowerCase().includes(q) ||
-              (p.position ?? '').toLowerCase().includes(q)
-            )
-          })
-          .sort((a, b) =>
-            sortBy === 'salary'
-              ? (b.salary ?? 0) - (a.salary ?? 0)
-              : (b.avg?.[sortBy] ?? 0) - (a.avg?.[sortBy] ?? 0)
-          )
-          .slice(0, 80)
-          .map((p) => (
-          <li key={p.id}>
-            <ListRow
-              title={<>{p.name}<InjuryTag status={p.injuryStatus} /></>}
-              sub={`${[p.position, p.teamCode, fmtSalary(p.salary)].filter(Boolean).join(' · ')} — ${fmtAvg(p.avg)}`}
-              end={
-                state.myTeamId ? (
-                  <Button
-                    variant={adds.includes(p.id) ? 'primary' : 'quiet'}
-                    aria-label={adds.includes(p.id) ? `${p.name} is pick ${adds.indexOf(p.id) + 1}` : `Add ${p.name}`}
-                    onClick={() => toggleAdd(p.id)}
-                  >
-                    {adds.includes(p.id) ? `#${adds.indexOf(p.id) + 1}` : <Plus aria-hidden />}
-                  </Button>
-                ) : undefined
-              }
-            />
-          </li>
-        ))}
-      </ul>
+      <div className="mb-6">
+        <StatTable
+          players={[...state.freeAgents]
+            .filter((p) => {
+              const q = search.trim().toLowerCase()
+              if (!q) return true
+              return (
+                p.name.toLowerCase().includes(q) ||
+                (p.teamCode ?? '').toLowerCase().includes(q) ||
+                (p.position ?? '').toLowerCase().includes(q)
+              )
+            })
+            .slice(0, 120)}
+          stats={ranges?.[range] ?? {}}
+          action={(p) =>
+            state.myTeamId ? (
+              <Button
+                variant={adds.includes(p.id) ? 'primary' : 'quiet'}
+                aria-label={adds.includes(p.id) ? `${p.name} is pick ${adds.indexOf(p.id) + 1}` : `Add ${p.name}`}
+                onClick={() => toggleAdd(p.id)}
+              >
+                {adds.includes(p.id) ? `#${adds.indexOf(p.id) + 1}` : <Plus aria-hidden />}
+              </Button>
+            ) : null
+          }
+        />
+      </div>
 
       {state.myTeamId ? (
         <>

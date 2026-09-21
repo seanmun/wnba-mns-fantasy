@@ -7,6 +7,7 @@ import { useApi } from '../hooks/useApi'
 import { Button, Chip, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
 import { useLeague } from '../contexts/LeagueContext'
 import { InjuryTag } from '../components/InjuryTag'
+import { RangeChips, StatTable, type RangeKey, type StatAvg } from '../components/StatTable'
 
 interface OwnerInfo {
   userId: string | null
@@ -206,6 +207,9 @@ export function OwnerDashboard() {
   const [confirmDrop, setConfirmDrop] = useState<string | null>(null)
   const [claims, setClaims] = useState<PendingClaim[]>([])
   const [showSettings, setShowSettings] = useState(false)
+  const [view, setView] = useState<'lineup' | 'stats'>('lineup')
+  const [range, setRange] = useState<RangeKey>('season')
+  const [ranges, setRanges] = useState<Record<string, Record<string, StatAvg> | null> | null>(null)
 
   const load = () => {
     Promise.all([
@@ -248,6 +252,13 @@ export function OwnerDashboard() {
       .then((w) => setClaims(w.myClaims ?? []))
       .catch(() => setClaims([]))
   }, [apiFetch, leagueId, owned])
+
+  useEffect(() => {
+    if (view !== 'stats' || ranges) return
+    apiFetch<Record<string, Record<string, StatAvg> | null>>(`/api/leagues/${leagueId}/stats`)
+      .then(setRanges)
+      .catch(() => setRanges({}))
+  }, [view, ranges, apiFetch, leagueId])
 
   const moveSlot = async (playerId: string, slot: 'active' | 'bench' | 'ir' | 'drop') => {
     setBusy(true)
@@ -394,6 +405,43 @@ export function OwnerDashboard() {
         </div>
       ) : null}
 
+      {/* Two ways to read a roster: the lineup you set, or the numbers. */}
+      <div className="mb-4 flex gap-1.5">
+        {(
+          [
+            ['lineup', 'Lineup'],
+            ['stats', 'Stats'],
+          ] as const
+        ).map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setView(k)}
+            aria-pressed={view === k}
+            className={
+              'text-sm rounded-full px-4 min-h-[2.5rem] border font-semibold ' +
+              (view === k
+                ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
+                : 'border-[var(--color-border)] text-[var(--color-muted-foreground)]')
+            }
+          >
+            {label}
+          </button>
+        ))}
+        {view === 'stats' ? (
+          <span className="ml-auto">
+            <RangeChips value={range} onChange={setRange} hasLastSeason={!!ranges?.lastSeason} />
+          </span>
+        ) : null}
+      </div>
+
+      {view === 'stats' ? (
+        <div className="mb-5">
+          <StatTable players={roster} stats={ranges?.[range] ?? {}} />
+        </div>
+      ) : null}
+
+      {view === 'stats' ? null : (
+      <>
       {/* The day carousel: yesterday is history, tomorrow is a plan. */}
       <div className="mb-4 flex items-center gap-2">
         <Button
@@ -526,6 +574,9 @@ export function OwnerDashboard() {
             ) : null
           )}
         </>
+      )}
+
+      </>
       )}
 
       {/* Draft capital is roster truth too — the picks this team can
