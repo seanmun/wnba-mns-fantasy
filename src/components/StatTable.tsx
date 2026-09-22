@@ -144,11 +144,16 @@ export function StatTable({
       <table className="w-full text-sm tabular-nums whitespace-nowrap">
         <thead>
           <tr className="border-b border-[var(--color-border)]">
-            <th className="sticky left-0 bg-mns-card text-left text-xs font-bold text-[var(--color-muted-foreground)] px-3 py-2">
+            {action ? <th className="sticky left-0 bg-mns-card w-11 p-0" /> : null}
+            <th
+              className={
+                'sticky bg-mns-card text-left text-xs font-bold text-[var(--color-muted-foreground)] px-3 py-2 ' +
+                (action ? 'left-11' : 'left-0')
+              }
+            >
               Player
             </th>
             {COLS.map(([k, label]) => header(k, label))}
-            {action ? <th className="p-0" /> : null}
           </tr>
         </thead>
         <tbody>
@@ -156,7 +161,15 @@ export function StatTable({
             const a = stats[p.id]
             return (
               <tr key={p.id} className="border-b border-[var(--color-border)] last:border-b-0">
-                <td className="sticky left-0 bg-mns-card px-3 py-1.5 max-w-[11rem] relative isolate">
+                {action ? (
+                  <td className="sticky left-0 bg-mns-card w-11 px-1 text-center">{action(p)}</td>
+                ) : null}
+                <td
+                  className={
+                    'sticky bg-mns-card px-3 py-1.5 max-w-[11rem] relative isolate ' +
+                    (action ? 'left-11' : 'left-0')
+                  }
+                >
                   {p.salary != null && salaryCeil > 0 ? (
                     <span
                       aria-hidden
@@ -206,7 +219,6 @@ export function StatTable({
                 <td className="px-2 text-right text-[var(--color-muted-foreground)]">
                   {p.salary != null ? `$${(p.salary / 1000).toFixed(0)}k` : '—'}
                 </td>
-                {action ? <td className="px-2 text-right">{action(p)}</td> : null}
               </tr>
             )
           })}
