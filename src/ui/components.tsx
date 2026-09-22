@@ -686,6 +686,8 @@ export function AssistantChat({
   // hands-free sends without a render in between, and state read
   // through a closure there would be one turn stale.
   const messagesRef = useRef<AssistantMessage[]>([])
+  // Consecutive turns that heard only noise.
+  const noiseRef = useRef(0)
   const ttsRef = useRef(tts)
   ttsRef.current = tts
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -736,8 +738,16 @@ export function AssistantChat({
     try {
       const reply = await send(next)
       setMessages([...next, { role: 'assistant', content: reply }])
-      // Awaited: hands-free must not reopen the mic over his own voice.
-      if (handsFreeRef.current) await speakReply(reply)
+      // Speech is separate from the answer, and failing at it must never
+      // overwrite an answer that arrived. Awaited so hands-free does not
+      // reopen the mic over Bump's own voice.
+      if (handsFreeRef.current) {
+        try {
+          await speakReply(reply)
+        } catch {
+          /* the reply is on screen; the voice is a bonus */
+        }
+      }
     } catch (e) {
       setMessages([
         ...next,
@@ -793,8 +803,13 @@ export function AssistantChat({
   // of words rather than a screen that quietly stopped working.
   const listenAgain = () => {
     if (!handsFreeRef.current) return
-    earcon('start')
-    startListeningRef.current()
+    // A breath between turns: back-to-back restarts in a noisy room
+    // (a television during the 1 o'clock games) would spin.
+    window.setTimeout(() => {
+      if (!handsFreeRef.current) return
+      earcon('start')
+      startListeningRef.current()
+    }, 400)
   }
 
   // Every tap starts a FRESH recording, whatever the last one left
@@ -832,9 +847,19 @@ export function AssistantChat({
       const heard = text.trim()
       if (heard.length < 4) {
         setInput('')
+        // Nothing but noise, over and over, means the room is winning.
+        // Stop rather than listen forever with the speaker chirping.
+        noiseRef.current += 1
+        if (noiseRef.current >= 5) {
+          earcon('stop')
+          setHandsFree(false)
+          setMicNote('Too noisy to hear you. Tap Hands-free to try again.')
+          return
+        }
         listenAgain()
         return
       }
+      noiseRef.current = 0
       earcon('stop')
       void (async () => {
         await doSendRef.current(heard)
@@ -900,6 +925,7 @@ export function AssistantChat({
     }
     setHandsFree(true)
     handsFreeRef.current = true
+    noiseRef.current = 0
     setMicNote(null)
     earcon('start')
     startListening()

@@ -248,21 +248,55 @@ export function FreeAgents() {
                 ? 'Pick a drop, or skip it — you have an open spot:'
                 : 'Now pick who to drop:'}
           </span>
-          <div className="flex flex-wrap gap-1.5">
-            {state.myRoster.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setDrop(drop === p.id ? null : p.id)}
-                className={
-                  'text-sm rounded-full px-3 py-1.5 border min-h-[2.75rem] ' +
-                  (drop === p.id
-                    ? 'border-[var(--color-pick-loss,#ff453a)] text-[var(--color-pick-loss,#ff453a)] font-bold'
-                    : 'border-[var(--color-border)] text-[var(--color-muted-foreground)]')
-                }
-              >
-                {p.name}
-              </button>
-            ))}
+          {/* Who can you afford to sit out? Each candidate shows their
+              health and whether they even play on the slate day. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            {state.myRoster.map((p) => {
+              const g = p.teamCode ? state.games[p.teamCode] : undefined
+              const out = p.injuryStatus?.toLowerCase() === 'out'
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => setDrop(drop === p.id ? null : p.id)}
+                  aria-pressed={drop === p.id}
+                  className={
+                    'flex items-center justify-between gap-2 text-left text-sm rounded-lg px-3 py-2 border min-h-[3rem] ' +
+                    (drop === p.id
+                      ? 'border-[var(--color-pick-loss,#ff453a)]'
+                      : 'border-[var(--color-border)]')
+                  }
+                >
+                  <span className="min-w-0">
+                    <span className={'block truncate font-semibold' + (drop === p.id ? ' text-[var(--color-pick-loss,#ff453a)]' : '')}>
+                      {drop === p.id ? '✕ ' : ''}
+                      {p.name}
+                    </span>
+                    <span className="block text-xs text-[var(--color-muted-foreground)]">
+                      {[p.position, p.teamCode].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right text-xs tabular-nums">
+                    {p.injuryStatus ? (
+                      <b
+                        className="block"
+                        style={{
+                          color: out
+                            ? 'var(--color-pick-loss, #ff453a)'
+                            : 'var(--color-key, #ffb000)',
+                        }}
+                      >
+                        {out ? 'OUT' : p.injuryStatus === 'Day-To-Day' ? 'DTD' : p.injuryStatus}
+                      </b>
+                    ) : null}
+                    <span className={g ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted-foreground)]'}>
+                      {g
+                        ? `${g.home ? 'vs' : '@'} ${g.opp} · ${g.state === 'pre' ? fmtTip(g.tip) : g.state === 'in' ? 'live' : 'final'}`
+                        : 'no game'}
+                    </span>
+                  </span>
+                </button>
+              )
+            })}
           </div>
           <div className="flex gap-2">
             <Button
