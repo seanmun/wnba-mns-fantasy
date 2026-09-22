@@ -133,6 +133,10 @@ export const mnsTeamOwners = wnbaSchema.table(
     email: text('email').notNull(),
     displayName: text('display_name'),
     isPrimary: boolean('is_primary').notNull().default(false),
+    // Per-owner email opt-outs: { waivers?, trades?, lineup? } — a
+    // missing key means ON. Local by design (the NFL rule): these are
+    // transactional, not hub marketing preferences.
+    emailPrefs: jsonb('email_prefs').$type<Record<string, boolean>>().notNull().default(sql`'{}'::jsonb`),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (t) => [

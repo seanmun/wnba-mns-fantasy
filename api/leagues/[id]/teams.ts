@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { verifyAuth, canManageLeague } from '../../_middleware.js'
 import { db } from '../../_db.js'
 import {
@@ -42,6 +42,7 @@ function mapOwnerRow(row: typeof mnsTeamOwners.$inferSelect): TeamOwner {
     email: row.email,
     displayName: row.displayName,
     isPrimary: row.isPrimary,
+    emailPrefs: (row.emailPrefs ?? {}) as Record<string, boolean>,
     createdAt: row.createdAt.toISOString(),
   }
 }
@@ -132,6 +133,20 @@ async function handlePatch(
     }
     if (Object.keys(set).length > 1) {
       await db.update(mnsTeams).set(set).where(eq(mnsTeams.id, teamId))
+    }
+
+    // Email preferences are PERSONAL: they land on the caller's own
+    // owner row, never the team's other owners.
+    if (req.body?.emailPrefs !== undefined) {
+      const prefs = req.body.emailPrefs as Record<string, boolean>
+      const clean: Record<string, boolean> = {}
+      for (const k of ['waivers', 'trades', 'lineup']) {
+        if (typeof prefs?.[k] === 'boolean') clean[k] = prefs[k]
+      }
+      await db
+        .update(mnsTeamOwners)
+        .set({ emailPrefs: clean })
+        .where(and(eq(mnsTeamOwners.teamId, teamId), eq(mnsTeamOwners.userId, userId)))
     }
 
     let invitesSent = 0

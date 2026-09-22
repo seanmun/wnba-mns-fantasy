@@ -21,5 +21,6 @@ export interface TeamOwner {
   email: string
   displayName: string | null
   isPrimary: boolean
+  emailPrefs?: Record<string, boolean>
   createdAt: string
 }

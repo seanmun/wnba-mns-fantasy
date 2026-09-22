@@ -14,6 +14,7 @@ interface OwnerInfo {
   userId: string | null
   displayName: string | null
   email: string
+  emailPrefs?: Record<string, boolean>
 }
 interface TeamInfo {
   id: string
@@ -706,6 +707,9 @@ function TeamSettings({
   onSaved: () => void
 }) {
   const { apiFetch } = useApi()
+  const { user } = useUser()
+  const myOwnerRow = team.owners.find((o) => o.userId != null && o.userId === user?.id)
+  const [prefs, setPrefs] = useState<Record<string, boolean>>(myOwnerRow?.emailPrefs ?? {})
   const [name, setName] = useState(team.name)
   const [logo, setLogo] = useState<string | null | undefined>(undefined) // undefined = unchanged
   const [coOwner, setCoOwner] = useState('')
@@ -735,6 +739,20 @@ function TeamSettings({
     }
     img.onerror = () => toast.error('Could not read that image.')
     img.src = url
+  }
+
+  // Prefs save quietly in place — the panel stays open for the next
+  // toggle.
+  const savePrefs = async (next: Record<string, boolean>) => {
+    try {
+      await apiFetch(`/api/leagues/${leagueId}/teams`, {
+        method: 'PATCH',
+        body: JSON.stringify({ teamId: team.id, emailPrefs: next }),
+      })
+      toast.success('Email preferences saved')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save')
+    }
   }
 
   const save = async (body: Record<string, unknown>, okMsg: string) => {
@@ -806,6 +824,41 @@ function TeamSettings({
             </Button>
           ) : null}
         </div>
+      </div>
+
+      <div>
+        <span className="block text-xs font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-1.5">
+          Email me about
+        </span>
+        <div className="flex flex-col gap-1.5">
+          {(
+            [
+              ['waivers', 'Waiver results — what cleared at 8am'],
+              ['trades', 'Trade offers and answers'],
+              ['lineup', 'Lineup warnings — OUT players before tip'],
+            ] as const
+          ).map(([k, label]) => {
+            const on = prefs[k] !== false
+            return (
+              <label key={k} className="flex items-center gap-2.5 min-h-[2.5rem] cursor-pointer text-sm">
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={() => {
+                    const next = { ...prefs, [k]: !on }
+                    setPrefs(next)
+                    void savePrefs(next)
+                  }}
+                  className="w-5 h-5 accent-[var(--color-accent)]"
+                />
+                {label}
+              </label>
+            )
+          })}
+        </div>
+        <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
+          Just you — co-owners choose for themselves.
+        </p>
       </div>
 
       <div>

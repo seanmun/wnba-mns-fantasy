@@ -22,18 +22,30 @@ import type { WaiverOutcome } from '../src/lib/season/waivers.js'
 
 const APP_URL = process.env.VITE_APP_URL || 'https://wnba.mnsfantasy.com'
 
-async function ownersOf(teamIds: string[]) {
+// Owners who haven't opted out of this KIND of email — a missing
+// pref key means on.
+async function ownersOf(teamIds: string[], kind: 'waivers' | 'trades' | 'lineup') {
   if (teamIds.length === 0) return new Map<string, Array<{ email: string }>>()
   const rows = await db
-    .select({ teamId: mnsTeamOwners.teamId, email: mnsTeamOwners.email })
+    .select({
+      teamId: mnsTeamOwners.teamId,
+      email: mnsTeamOwners.email,
+      emailPrefs: mnsTeamOwners.emailPrefs,
+    })
     .from(mnsTeamOwners)
     .where(inArray(mnsTeamOwners.teamId, teamIds))
   const map = new Map<string, Array<{ email: string }>>()
   for (const r of rows) {
+    if ((r.emailPrefs as Record<string, boolean>)?.[kind] === false) continue
     map.set(r.teamId, [...(map.get(r.teamId) ?? []), { email: r.email }])
   }
   return map
 }
+
+// Every notify email points at the per-category switches, so opting
+// out of one kind never means unsubscribing from the league.
+const prefsFootnote = (leagueId: string, base: string) =>
+  `${base} <a href="${APP_URL}/league/${leagueId}/my-team" style="color:#43d675">Choose which emails you get</a> — team settings, the gear on My Team.`
 
 // "Your claims cleared" — one email per team that had claims due,
 // wins and misses in one honest list.
@@ -41,7 +53,7 @@ export async function sendWaiverResults(leagueId: string, outcomes: WaiverOutcom
   if (outcomes.length === 0) return
   try {
     const [league] = await db.select().from(mnsLeagues).where(eq(mnsLeagues.id, leagueId)).limit(1)
-    const owners = await ownersOf(outcomes.map((o) => o.teamId))
+    const owners = await ownersOf(outcomes.map((o) => o.teamId), 'waivers')
     const messages = outcomes.flatMap((o) => {
       const got = o.granted.map((n) => `<b style="color:#43d675">＋ ${esc(n)}</b>`).join('<br>')
       const missed = o.failed
@@ -64,7 +76,7 @@ export async function sendWaiverResults(leagueId: string, outcomes: WaiverOutcom
           bodyHtml,
           ctaLabel: 'See my roster',
           ctaUrl: `${APP_URL}/league/${leagueId}/my-team`,
-          footerLine: `Sent because you own a team in ${esc(league?.name ?? 'an MNS league')}.`,
+          footerLine: prefsFootnote(leagueId, `Sent because you own a team in ${esc(league?.name ?? 'an MNS league')}.`),
         }),
         text: [
           'Waiver results:',
@@ -94,7 +106,7 @@ export async function sendTradeNote(
 ) {
   try {
     const [league] = await db.select().from(mnsLeagues).where(eq(mnsLeagues.id, leagueId)).limit(1)
-    const owners = await ownersOf([toTeamId])
+    const owners = await ownersOf([toTeamId], 'trades')
     const heading =
       kind === 'proposed'
         ? `${detail.fromTeamName} wants to deal`
@@ -117,7 +129,7 @@ export async function sendTradeNote(
         bodyHtml: emailNote(detail.assetLines.map(esc).join('<br>')),
         ctaLabel: kind === 'proposed' ? 'Answer the offer' : 'See the trade',
         ctaUrl: `${APP_URL}/league/${leagueId}/trade-machine`,
-        footerLine: `Sent because you own a team in ${esc(league?.name ?? 'an MNS league')}.`,
+        footerLine: prefsFootnote(leagueId, `Sent because you own a team in ${esc(league?.name ?? 'an MNS league')}.`),
       }),
       text: [subject, ...detail.assetLines, `${APP_URL}/league/${leagueId}/trade-machine`].join('\n'),
     }))
@@ -175,7 +187,7 @@ export async function sendLineupWarnings(
     }
     const teams = await db.select().from(mnsTeams).where(eq(mnsTeams.leagueId, league.id))
     const teamName = new Map(teams.map((t) => [t.id, t.name]))
-    const owners = await ownersOf([...byTeam.keys()])
+    const owners = await ownersOf([...byTeam.keys()], 'lineup')
     const tipClock = new Date(firstTip).toLocaleTimeString('en-US', {
       timeZone: 'America/New_York',
       hour: 'numeric',
@@ -196,7 +208,7 @@ export async function sendLineupWarnings(
           ),
           ctaLabel: 'Fix my lineup',
           ctaUrl: `${APP_URL}/league/${league.id}/my-team`,
-          footerLine: `Sent because you own ${esc(teamName.get(teamId) ?? 'a team')} in ${esc(league.name)}.`,
+          footerLine: prefsFootnote(league.id, `Sent because you own ${esc(teamName.get(teamId) ?? 'a team')} in ${esc(league.name)}.`),
         }),
         text: [
           `OUT tonight but still in your active lineup: ${names.join(', ')}.`,
