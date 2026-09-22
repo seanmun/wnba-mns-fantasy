@@ -3,6 +3,7 @@ import { and, eq, gte, inArray, lte } from 'drizzle-orm'
 import { verifyAuth } from '../../_middleware.js'
 import { db } from '../../_db.js'
 import {
+  mnsLeagues,
   mnsLeagueWeeks,
   mnsMatchups,
   mnsPlayers,
@@ -30,10 +31,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const matchupId = req.query.matchupId ? String(req.query.matchupId) : null
 
   try {
+    const [league] = await db.select().from(mnsLeagues).where(eq(mnsLeagues.id, leagueId)).limit(1)
+    if (!league) return res.status(404).json({ error: 'League not found' })
     const weeks = await db
       .select()
       .from(mnsLeagueWeeks)
-      .where(eq(mnsLeagueWeeks.leagueId, leagueId))
+      .where(
+        and(eq(mnsLeagueWeeks.leagueId, leagueId), eq(mnsLeagueWeeks.seasonYear, league.seasonYear))
+      )
     if (weeks.length === 0) return res.status(200).json({ week: null, matchups: [] })
 
     const teams = await db.select().from(mnsTeams).where(eq(mnsTeams.leagueId, leagueId))
@@ -156,7 +161,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const matchups = await db
       .select()
       .from(mnsMatchups)
-      .where(and(eq(mnsMatchups.leagueId, leagueId), eq(mnsMatchups.matchupWeek, week)))
+      .where(
+        and(
+          eq(mnsMatchups.leagueId, leagueId),
+          eq(mnsMatchups.matchupWeek, week),
+          eq(mnsMatchups.seasonYear, league.seasonYear)
+        )
+      )
 
     return res.status(200).json({
       week,

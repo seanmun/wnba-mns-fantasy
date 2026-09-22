@@ -376,6 +376,39 @@ export function AdminLeague() {
           />
         </Section>
 
+        <Section title="Year to Year">
+          <Row label="Rookie Draft">
+            <Toggle
+              value={config.draft.rookieDraftEnabled ?? false}
+              onChange={(v) =>
+                setConfig({ ...config, draft: { ...config.draft, rookieDraftEnabled: v } })
+              }
+            />
+          </Row>
+          <p className="text-xs text-gray-500 -mt-1">
+            On: each new season opens with a rookie draft, then keepers, then the regular draft.
+            Off: keepers straight to one regular draft.
+          </p>
+          <NumRow
+            label="Keepers Allowed"
+            value={config.roster.maxKeepers}
+            onChange={(v) =>
+              setConfig({ ...config, roster: { ...config.roster, maxKeepers: Number(v) } })
+            }
+          />
+          <NumRow
+            label="Cap Increase per Year (%)"
+            value={config.cap.annualIncreasePct ?? 0}
+            onChange={(v) =>
+              setConfig({ ...config, cap: { ...config.cap, annualIncreasePct: Number(v) } })
+            }
+          />
+          <p className="text-xs text-gray-500 -mt-1">
+            Applied to floor, aprons and hard cap when you start the next season. You can still
+            hand-edit the ladder any time.
+          </p>
+        </Section>
+
         <Section title="Prize Pool (tracked, never handled)">
           <NumRow
             label="Cash Pot (USD)"

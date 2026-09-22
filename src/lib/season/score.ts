@@ -57,10 +57,19 @@ export async function scoreLeagueWeek(
   matchupWeek: number,
   now = new Date()
 ): Promise<{ scored: number; finalized: number }> {
+  // Week numbers repeat every season; the config's year names which
+  // season's week this is.
+  const seasonYear = config.season.year
   const weekRows = await db
     .select()
     .from(mnsLeagueWeeks)
-    .where(and(eq(mnsLeagueWeeks.leagueId, leagueId), eq(mnsLeagueWeeks.matchupWeek, matchupWeek)))
+    .where(
+      and(
+        eq(mnsLeagueWeeks.leagueId, leagueId),
+        eq(mnsLeagueWeeks.matchupWeek, matchupWeek),
+        eq(mnsLeagueWeeks.seasonYear, seasonYear)
+      )
+    )
   if (weekRows.length === 0) return { scored: 0, finalized: 0 }
   const startDate = weekRows.reduce(
     (min: string, w: { startDate: string }) => (w.startDate < min ? w.startDate : min),
@@ -74,7 +83,13 @@ export async function scoreLeagueWeek(
   const matchups = await db
     .select()
     .from(mnsMatchups)
-    .where(and(eq(mnsMatchups.leagueId, leagueId), eq(mnsMatchups.matchupWeek, matchupWeek)))
+    .where(
+      and(
+        eq(mnsMatchups.leagueId, leagueId),
+        eq(mnsMatchups.matchupWeek, matchupWeek),
+        eq(mnsMatchups.seasonYear, seasonYear)
+      )
+    )
   if (matchups.length === 0) return { scored: 0, finalized: 0 }
 
   // ACTIVE players only — bench and IR are real decisions with real
@@ -176,7 +191,7 @@ export async function matchupWeekFor(
 
 // Standings straight from graded matchups — final weeks count fully,
 // the live week rides along so the page always shows the present.
-export async function computeStandings(db: Db, leagueId: string) {
+export async function computeStandings(db: Db, leagueId: string, seasonYear?: number) {
   const matchups = await db
     .select()
     .from(mnsMatchups)
@@ -184,7 +199,8 @@ export async function computeStandings(db: Db, leagueId: string) {
       and(
         eq(mnsMatchups.leagueId, leagueId),
         eq(mnsMatchups.isPlayoff, false),
-        sql`${mnsMatchups.status} != 'scheduled'`
+        sql`${mnsMatchups.status} != 'scheduled'`,
+        ...(seasonYear != null ? [eq(mnsMatchups.seasonYear, seasonYear)] : [])
       )
     )
 

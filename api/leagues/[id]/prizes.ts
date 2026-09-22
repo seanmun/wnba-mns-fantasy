@@ -126,7 +126,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Who currently holds each paid place, straight from standings.
     const teams = await db.select().from(mnsTeams).where(eq(mnsTeams.leagueId, leagueId))
-    const rec = await computeStandings(db, leagueId)
+    const rec = await computeStandings(db, leagueId, league.seasonYear)
     const ranked = teams
       .map((t) => ({ name: t.name, ...(rec.get(t.id) ?? { wins: 0, losses: 0, ties: 0, pointsFor: 0 }) }))
       .sort((a, b) => b.wins - a.wins || b.pointsFor - a.pointsFor)

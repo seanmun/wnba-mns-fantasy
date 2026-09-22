@@ -76,7 +76,7 @@ async function createRound(
   label: string
 ) {
   await db.insert(mnsLeagueWeeks).values({
-    id: `${league.id}_w${matchupWeek}`,
+    id: `${league.id}_${league.seasonYear}_w${matchupWeek}`,
     leagueId: league.id,
     seasonYear: league.seasonYear,
     weekNumber: matchupWeek,
@@ -87,7 +87,7 @@ async function createRound(
   })
   for (const p of pairings) {
     await db.insert(mnsMatchups).values({
-      id: `${league.id}_w${matchupWeek}_${p.home.teamId}_${p.away.teamId}`,
+      id: `${league.id}_${league.seasonYear}_w${matchupWeek}_${p.home.teamId}_${p.away.teamId}`,
       leagueId: league.id,
       seasonYear: league.seasonYear,
       matchupWeek,
@@ -115,7 +115,9 @@ export async function maybeStartPlayoffs(
   const weeks = await db
     .select()
     .from(mnsLeagueWeeks)
-    .where(eq(mnsLeagueWeeks.leagueId, league.id))
+    .where(
+      and(eq(mnsLeagueWeeks.leagueId, league.id), eq(mnsLeagueWeeks.seasonYear, league.seasonYear))
+    )
   if (weeks.length === 0) return false
   const lastEnd = weeks.reduce(
     (max: string, w: { endDate: string }) => (w.endDate > max ? w.endDate : max),
@@ -126,13 +128,19 @@ export async function maybeStartPlayoffs(
   const matchups = await db
     .select()
     .from(mnsMatchups)
-    .where(and(eq(mnsMatchups.leagueId, league.id), eq(mnsMatchups.isPlayoff, false)))
+    .where(
+      and(
+        eq(mnsMatchups.leagueId, league.id),
+        eq(mnsMatchups.isPlayoff, false),
+        eq(mnsMatchups.seasonYear, league.seasonYear)
+      )
+    )
   if (matchups.length === 0) return false
   if (matchups.some((m: { status: string }) => m.status !== 'final')) return false
 
   // Seed straight from the banked standings.
   const teams = await db.select().from(mnsTeams).where(eq(mnsTeams.leagueId, league.id))
-  const rec = await computeStandings(db, league.id)
+  const rec = await computeStandings(db, league.id, league.seasonYear)
   const seeds: Seeded[] = teams
     .map((t: { id: string }) => ({
       teamId: t.id,
@@ -191,7 +199,13 @@ export async function advancePlayoffs(
   const playoffMatchups = await db
     .select()
     .from(mnsMatchups)
-    .where(and(eq(mnsMatchups.leagueId, league.id), eq(mnsMatchups.isPlayoff, true)))
+    .where(
+      and(
+        eq(mnsMatchups.leagueId, league.id),
+        eq(mnsMatchups.isPlayoff, true),
+        eq(mnsMatchups.seasonYear, league.seasonYear)
+      )
+    )
   if (playoffMatchups.length === 0) return { advanced: false }
   const lastWeek = Math.max(
     ...playoffMatchups.map((m: { matchupWeek: number }) => m.matchupWeek)
@@ -205,7 +219,12 @@ export async function advancePlayoffs(
   const [bracket] = await db
     .select()
     .from(mnsPlayoffBrackets)
-    .where(eq(mnsPlayoffBrackets.leagueId, league.id))
+    .where(
+      and(
+        eq(mnsPlayoffBrackets.leagueId, league.id),
+        eq(mnsPlayoffBrackets.seasonYear, league.seasonYear)
+      )
+    )
     .limit(1)
   const seedOf = new Map<string, number>(
     ((bracket?.bracket as { seeds?: Seeded[] })?.seeds ?? []).map((s) => [s.teamId, s.seed])
@@ -237,7 +256,13 @@ export async function advancePlayoffs(
     const weekRows = await db
       .select()
       .from(mnsLeagueWeeks)
-      .where(and(eq(mnsLeagueWeeks.leagueId, league.id), eq(mnsLeagueWeeks.matchupWeek, lastWeek)))
+      .where(
+      and(
+        eq(mnsLeagueWeeks.leagueId, league.id),
+        eq(mnsLeagueWeeks.matchupWeek, lastWeek),
+        eq(mnsLeagueWeeks.seasonYear, league.seasonYear)
+      )
+    )
     const lastEnd = weekRows[0]?.endDate ?? easternToday(now)
     if (easternToday(now) <= lastEnd) return { advanced: false }
     const pairings = nextRoundPairings(winners, byesTo)

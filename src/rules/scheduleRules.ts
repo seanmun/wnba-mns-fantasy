@@ -57,7 +57,7 @@ export function generateWeeks(params: {
     const combined = combinedMap.get(weekNum)
 
     weeks.push({
-      id: `${leagueId}_week_${weekNum}`,
+      id: `${leagueId}_${seasonYear}_week_${weekNum}`,
       leagueId,
       seasonYear,
       weekNumber: weekNum,
@@ -94,7 +94,7 @@ export function generateWeeks(params: {
       }
 
       weeks.push({
-        id: `${leagueId}_week_${weekNum}`,
+        id: `${leagueId}_${seasonYear}_week_${weekNum}`,
         leagueId,
         seasonYear,
         weekNumber: weekNum,

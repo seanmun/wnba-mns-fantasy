@@ -37,6 +37,9 @@ export interface LeagueConfig {
   draft: {
     rounds: number
     type: DraftType
+    // Off = one regular draft a year; the rollover skips the
+    // rookie_draft phase entirely.
+    rookieDraftEnabled?: boolean
     rookieRounds: number
     rookieYearsTracked: number
     rookieOrderMethod: RookieOrderMethod
@@ -44,6 +47,8 @@ export interface LeagueConfig {
   }
   cap: {
     enabled: boolean
+    // Applied to the whole ladder at season rollover (percent).
+    annualIncreasePct?: number
     floor: number
     base: number
     firstApron: number

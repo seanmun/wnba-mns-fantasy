@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { generateWeeks } from '../../rules/scheduleRules.js'
 import { mnsLeagueWeeks, mnsMatchups, mnsTeams } from '../db/schema.js'
 import type { LeagueConfig } from '../../types/leagueConfig.js'
@@ -52,8 +52,14 @@ export async function generateSeasonSchedule(
     throw new Error('League config has no season.startDate — set it before starting the season')
   }
 
-  await db.delete(mnsMatchups).where(eq(mnsMatchups.leagueId, leagueId))
-  await db.delete(mnsLeagueWeeks).where(eq(mnsLeagueWeeks.leagueId, leagueId))
+  // Only THIS season regenerates — prior years are history and stay.
+  const seasonYear = weeks[0].seasonYear
+  await db
+    .delete(mnsMatchups)
+    .where(and(eq(mnsMatchups.leagueId, leagueId), eq(mnsMatchups.seasonYear, seasonYear)))
+  await db
+    .delete(mnsLeagueWeeks)
+    .where(and(eq(mnsLeagueWeeks.leagueId, leagueId), eq(mnsLeagueWeeks.seasonYear, seasonYear)))
 
   await db.insert(mnsLeagueWeeks).values(
     weeks.map((w) => ({
@@ -76,7 +82,7 @@ export async function generateSeasonSchedule(
   for (const mw of matchupWeeks) {
     for (const [home, away] of roundRobinPairings(teamIds, mw)) {
       rows.push({
-        id: `${leagueId}_w${mw}_${home}_${away}`,
+        id: `${leagueId}_${weeks[0].seasonYear}_w${mw}_${home}_${away}`,
         leagueId,
         seasonYear: weeks[0].seasonYear,
         matchupWeek: mw,

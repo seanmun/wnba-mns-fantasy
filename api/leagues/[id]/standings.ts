@@ -3,7 +3,7 @@ import { eq, gte } from 'drizzle-orm'
 import { and } from 'drizzle-orm'
 import { verifyAuth } from '../../_middleware.js'
 import { db } from '../../_db.js'
-import { mnsPlayers, mnsPlayerStatLines, mnsTeamOwners, mnsTeams } from '../../../src/lib/db/schema.js'
+import { mnsLeagues, mnsPlayers, mnsPlayerStatLines, mnsTeamOwners, mnsTeams } from '../../../src/lib/db/schema.js'
 import { computeStandings } from '../../../src/lib/season/score.js'
 import { logger } from '../../_logger.js'
 
@@ -16,6 +16,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const leagueId = String(req.query.id ?? '')
   try {
+    const [league] = await db.select().from(mnsLeagues).where(eq(mnsLeagues.id, leagueId)).limit(1)
     const teams = await db
       .select()
       .from(mnsTeams)
@@ -31,7 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ownersByTeam.set(o.teamId, list)
     }
 
-    const rec = await computeStandings(db, leagueId)
+    const rec = await computeStandings(db, leagueId, league?.seasonYear)
     const salaries = await db
       .select({ teamId: mnsPlayers.teamId, salary: mnsPlayers.salary, id: mnsPlayers.id })
       .from(mnsPlayers)

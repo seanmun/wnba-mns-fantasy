@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
+import { toast } from 'sonner'
+import { useApi } from '../hooks/useApi'
 import { useLeague } from '../contexts/LeagueContext'
 import { CommissionerChecklist } from '../components/CommissionerChecklist'
-import { EmptyState } from '../ui/components'
+import { Button, EmptyState } from '../ui/components'
 
 // The manager's portal: every LM tool in one place, off the member
 // screens. The setup checklist lives here; the quick links cover the
@@ -10,8 +13,28 @@ import { EmptyState } from '../ui/components'
 export function LeagueManagerHub() {
   const { leagueId = '' } = useParams()
   const { user } = useUser()
-  const { userLeagues, loading } = useLeague()
+  const { apiFetch } = useApi()
+  const { userLeagues, loading, refreshLeagues } = useLeague()
   const league = userLeagues.find((l) => l.id === leagueId)
+  const [confirmRollover, setConfirmRollover] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const rollover = async () => {
+    setBusy(true)
+    try {
+      const r = await apiFetch<{ seasonYear: number; leaguePhase: string }>(
+        `/api/leagues/${leagueId}/rollover`,
+        { method: 'POST' }
+      )
+      toast.success(`Welcome to ${r.seasonYear} — next stop: ${r.leaguePhase.replace('_', ' ')}`)
+      refreshLeagues()
+      setConfirmRollover(false)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Rollover failed')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -43,6 +66,40 @@ export function LeagueManagerHub() {
     <div className="max-w-3xl mx-auto px-4 py-8 pb-24">
       <h1 className="text-3xl font-bold mb-1">League manager</h1>
       <p className="text-sm text-[var(--color-muted-foreground)] mb-6">{league.name}</p>
+
+      {league.leaguePhase === 'champion' ? (
+        <div className="mb-6 rounded-lg border border-[var(--color-accent)] bg-mns-card p-4">
+          <b>The season is done — a champion is crowned.</b>
+          <p className="text-sm text-[var(--color-muted-foreground)] mt-1">
+            Starting {league.seasonYear + 1} advances the year, grows the cap ladder by your
+            configured annual percent, clears stale waiver queues, and opens{' '}
+            {league.config.draft?.rookieDraftEnabled
+              ? 'the rookie draft'
+              : (league.config.roster?.maxKeepers ?? 0) > 0
+                ? 'keeper declarations'
+                : 'the draft'}
+            . Rosters, picks and banners carry over — that's the dynasty.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <Button
+              variant={confirmRollover ? 'danger' : 'primary'}
+              onClick={() => (confirmRollover ? rollover() : setConfirmRollover(true))}
+              disabled={busy}
+            >
+              {busy
+                ? 'Working…'
+                : confirmRollover
+                  ? `Yes — start ${league.seasonYear + 1}`
+                  : `Start the ${league.seasonYear + 1} season`}
+            </Button>
+            {confirmRollover ? (
+              <Button variant="quiet" onClick={() => setConfirmRollover(false)}>
+                Not yet
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid sm:grid-cols-2 gap-2 mb-8">
         {links.map(([label, to, desc]) => (
