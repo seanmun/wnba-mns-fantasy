@@ -529,6 +529,23 @@ export const mnsTransactions = wnbaSchema.table(
   (t) => [index('idx_mns_transactions_league_time').on(t.leagueId, t.createdAt)]
 )
 
+// One row per notification batch that must fire exactly once — the
+// lineup warning keys on (league, kind, day) so a 20-minute tick can
+// check freely and send once.
+export const mnsNotifyLog = wnbaSchema.table(
+  'notify_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    leagueId: text('league_id')
+      .notNull()
+      .references(() => mnsLeagues.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    dateKey: text('date_key').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => [unique('mns_notify_log_once_key').on(t.leagueId, t.kind, t.dateKey)]
+)
+
 // One waiver claim = one move in a team's QUEUE for a clearing day
 // (rank orders the queue). Clearing runs like a snake draft: round one
 // takes every team's top claim in priority order, round two reverses,

@@ -14,6 +14,7 @@ import {
 import { isTradeDeadlinePassed } from '../../../src/rules/tradeRules.js'
 import { pickBoard as sharedPickBoard } from '../../../src/lib/season/picks.js'
 import { logTransaction } from '../../../src/lib/season/waivers.js'
+import { sendTradeNote } from '../../_notify.js'
 import { logger } from '../../_logger.js'
 import type { TradeAsset } from '../../../src/types/trade.js'
 import type { LeagueConfig } from '../../../src/types/leagueConfig.js'
@@ -181,6 +182,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         teamId: toTeamId,
         status: 'pending',
       })
+      {
+        const teams = await db.select().from(mnsTeams).where(eq(mnsTeams.leagueId, leagueId))
+        const nameOf = new Map(teams.map((t) => [t.id, t.name]))
+        await sendTradeNote(leagueId, toTeamId, 'proposed', {
+          fromTeamName: nameOf.get(mine.teamId) ?? 'A team',
+          assetLines: assets.map(
+            (a) => `${a.displayName} → ${nameOf.get(a.toTeamId) ?? a.toTeamId}`
+          ),
+        })
+      }
       return res.status(201).json({ ok: true, proposalId })
     }
 
@@ -222,6 +233,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .update(mnsTradeProposalResponses)
           .set({ status: 'rejected', respondedBy: userId, respondedAt: new Date(), updatedAt: new Date() })
           .where(eq(mnsTradeProposalResponses.proposalId, proposalId))
+        {
+          const teams = await db.select().from(mnsTeams).where(eq(mnsTeams.leagueId, leagueId))
+          const nameOf = new Map(teams.map((t) => [t.id, t.name]))
+          await sendTradeNote(leagueId, proposal.proposedByTeamId, 'rejected', {
+            fromTeamName: nameOf.get(mine.teamId) ?? 'The other owner',
+            assetLines: (proposal.assets as TradeAsset[]).map(
+              (a) => `${a.displayName} → ${nameOf.get(a.toTeamId) ?? a.toTeamId}`
+            ),
+          })
+        }
         return res.status(200).json({ ok: true, status: 'rejected' })
       }
 
@@ -317,6 +338,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .update(mnsTradeProposalResponses)
         .set({ status: 'accepted', respondedBy: userId, respondedAt: new Date(), updatedAt: new Date() })
         .where(eq(mnsTradeProposalResponses.proposalId, proposalId))
+      {
+        const teams = await db.select().from(mnsTeams).where(eq(mnsTeams.leagueId, leagueId))
+        const nameOf = new Map(teams.map((t) => [t.id, t.name]))
+        await sendTradeNote(leagueId, proposal.proposedByTeamId, 'accepted', {
+          fromTeamName: nameOf.get(mine.teamId) ?? 'The other owner',
+          assetLines: assets.map(
+            (a) => `${a.displayName} → ${nameOf.get(a.toTeamId) ?? a.toTeamId}`
+          ),
+        })
+      }
       return res.status(200).json({ ok: true, status: 'executed' })
     }
 

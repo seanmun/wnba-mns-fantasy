@@ -18,6 +18,7 @@ import {
   waiverPriority,
 } from '../../../src/lib/season/waivers.js'
 import { seasonAverages } from '../../../src/lib/season/stats.js'
+import { sendWaiverResults } from '../../_notify.js'
 import { dayGames } from '../../../src/lib/season/statSources.js'
 import { easternToday } from '../../../src/lib/season/score.js'
 import { logger } from '../../_logger.js'
@@ -160,7 +161,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // first person awake at 8am could snipe a player someone
         // claimed overnight, before the tick has run. Idempotent and
         // self-gated, so calling it here is free when nothing is due.
-        await processWaivers(db, leagueId, league.config as import('../../../src/types/leagueConfig.js').LeagueConfig)
+        const cleared = await processWaivers(db, leagueId, league.config as import('../../../src/types/leagueConfig.js').LeagueConfig)
+        await sendWaiverResults(leagueId, cleared.outcomes)
         const addId = addPlayerIds[0]
         if (config.cap?.enabled) {
           const rows = await db

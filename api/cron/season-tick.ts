@@ -8,6 +8,8 @@ import { easternToday, matchupWeekFor, scoreLeagueWeek } from '../../src/lib/sea
 import { processWaivers } from '../../src/lib/season/waivers.js'
 import { applyLineupsForToday } from '../../src/lib/season/lineups.js'
 import { advancePlayoffs, maybeStartPlayoffs } from '../../src/lib/season/playoffs.js'
+import { faWindow } from '../../src/lib/season/waivers.js'
+import { sendLineupWarnings, sendWaiverResults } from '../_notify.js'
 import type { LeagueConfig } from '../../src/types/leagueConfig.js'
 
 // The season heartbeat, hourly. For every league in its regular season:
@@ -79,6 +81,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Waivers clear daily at the first pass at/after 8am ET — the
       // engine gates itself, so calling every tick is safe.
       const waivers = await processWaivers(db, league.id, config, now)
+      await sendWaiverResults(league.id, waivers.outcomes)
+
+      // The lineup warning fires inside the last three hours before
+      // first tip, once per day (notify_log holds the key).
+      if (source === 'espn') {
+        const window = await faWindow(now)
+        await sendLineupWarnings({ id: league.id, name: league.name }, window.firstTip, now)
+      }
 
       // The injury report, full-refresh (sim leagues skip it — their
       // players never really get hurt).

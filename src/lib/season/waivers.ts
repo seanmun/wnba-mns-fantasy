@@ -35,10 +35,16 @@ export function nextClearDate(now = new Date()): string {
   return easternToday(new Date(now.getTime() + 24 * 3600 * 1000))
 }
 
+export interface WaiverOutcome {
+  teamId: string
+  granted: string[]
+  failed: Array<{ name: string; reason: string }>
+}
 export interface WaiverResult {
   processed: number
   granted: number
   failed: number
+  outcomes: WaiverOutcome[]
 }
 
 // Priority: a rolling line ordered by each team's most recent GRANTED
@@ -126,7 +132,7 @@ export async function processWaivers(
   config: LeagueConfig,
   now = new Date()
 ): Promise<WaiverResult> {
-  const result: WaiverResult = { processed: 0, granted: 0, failed: 0 }
+  const result: WaiverResult = { processed: 0, granted: 0, failed: 0, outcomes: [] }
   // The clearing moment is 8am Eastern — before that, today's due
   // claims stay pending so late-night submitters aren't racing the
   // clock at 12:01.
@@ -177,6 +183,16 @@ export async function processWaivers(
   const hardCap = config.cap?.enabled ? config.cap.hardCap : null
 
   const activeSize = config.roster?.activeSize ?? 10
+  const outcomeOf = new Map<string, WaiverOutcome>()
+  const outcome = (teamId: string) => {
+    let o = outcomeOf.get(teamId)
+    if (!o) {
+      o = { teamId, granted: [], failed: [] }
+      outcomeOf.set(teamId, o)
+      result.outcomes.push(o)
+    }
+    return o
+  }
   let grantSeq = 0
   for (const claim of passes) {
     result.processed++
@@ -242,12 +258,20 @@ export async function processWaivers(
           : {}),
       })
       result.granted++
+      outcome(claim.teamId).granted.push(
+        (byId.get(grantedId) as { name?: string })?.name ?? grantedId
+      )
     } else {
       await db
         .update(mnsWaiverClaims)
         .set({ status: 'failed', failureReason: reason, processedAt: now, updatedAt: now })
         .where(eq(mnsWaiverClaims.id, claim.id))
       result.failed++
+      const firstAdd = (claim.addPlayerIds as string[])[0]
+      outcome(claim.teamId).failed.push({
+        name: (byId.get(firstAdd) as { name?: string })?.name ?? firstAdd,
+        reason: reason ?? 'not available',
+      })
     }
   }
 
