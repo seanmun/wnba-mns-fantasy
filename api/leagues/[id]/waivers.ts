@@ -18,6 +18,8 @@ import {
   waiverPriority,
 } from '../../../src/lib/season/waivers.js'
 import { seasonAverages } from '../../../src/lib/season/stats.js'
+import { dayGames } from '../../../src/lib/season/statSources.js'
+import { easternToday } from '../../../src/lib/season/score.js'
 import { logger } from '../../_logger.js'
 
 // The waiver wire. Teams queue as many claims as they like; tomorrow
@@ -61,6 +63,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const playerName = new Map(players.map((p) => [p.id, p.name]))
 
       const window = await faWindow()
+      // The slate members are actually shopping for: tonight while
+      // adds are instant, the clear-day slate once claims queue.
+      const slateDate = window.mode === 'open' ? easternToday() : nextClearDate()
+      const slate = await dayGames(slateDate)
       const order = await waiverPriority(db, leagueId)
       const myClaims = mine
         ? await db
@@ -83,6 +89,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         window: window.mode,
         firstTip: window.firstTip,
         clearsOn: nextClearDate(),
+        slateDate,
+        slateToday: slateDate === easternToday(),
+        games: Object.fromEntries(slate),
         priority: order.map((id, i) => ({ position: i + 1, teamId: id, teamName: teamName.get(id) ?? id, isMe: mine?.teamId === id })),
         myRoster: players
           .filter((p) => mine && p.teamId === mine.teamId)

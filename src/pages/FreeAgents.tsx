@@ -28,9 +28,18 @@ interface WirePlayer {
   injuryUpdatedAt?: string | null
   avg: PlayerAvg | null
 }
+interface DayGame {
+  opp: string
+  home: boolean
+  tip: string
+  state: 'pre' | 'in' | 'post'
+}
 interface WireState {
   myTeamId: string | null
   activeSize: number
+  slateDate: string
+  slateToday: boolean
+  games: Record<string, DayGame>
   window: 'open' | 'waivers'
   firstTip: string | null
   clearsOn: string
@@ -48,6 +57,8 @@ interface WireState {
 }
 
 const fmtSalary = (n: number | null) => (n != null ? `$${(n / 1000).toFixed(0)}k` : '')
+const fmtTip = (iso: string) =>
+  new Date(iso).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })
 
 // Free agency, two gears set by the day's real schedule: OPEN until
 // the first tipoff (pick one, name the drop, it's instant), then
@@ -177,6 +188,31 @@ export function FreeAgents() {
         ))}
       </div>
 
+      {/* The slate that matters right now: tonight while adds are
+          instant, tomorrow once claims queue for the 8am clear. */}
+      {Object.keys(state.games).length > 0 ? (
+        <div className="mb-4">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-1.5">
+            {state.slateToday ? "Tonight's games — adds play tonight" : "Tomorrow's games — claims land for these"}
+          </h2>
+          <div className="flex gap-1.5 overflow-x-auto pb-1">
+            {Object.entries(state.games)
+              .filter(([, g]) => g.home)
+              .map(([code, g]) => (
+                <span
+                  key={code}
+                  className="shrink-0 text-xs rounded-lg px-2.5 py-1.5 border border-[var(--color-border)] bg-mns-card tabular-nums"
+                >
+                  <b>{g.opp}</b> @ <b>{code}</b>
+                  <span className="text-[var(--color-muted-foreground)]">
+                    {' '}· {g.state === 'pre' ? fmtTip(g.tip) : g.state === 'in' ? 'live' : 'final'}
+                  </span>
+                </span>
+              ))}
+          </div>
+        </div>
+      ) : null}
+
       {state.myClaims.length > 0 ? (
         <div className="mb-4 rounded-lg border border-[var(--color-accent)] bg-mns-card p-3 text-sm">
           <b>Your waiver queue</b> — clears {state.myClaims[0].clearsOn} at 8am ET. Rounds run
@@ -270,6 +306,16 @@ export function FreeAgents() {
             .slice(0, 120)}
           stats={ranges?.[range] ?? {}}
           onSelect={(p) => setCardId(p.id)}
+          note={(p) => {
+            const g = p.teamCode ? state.games[p.teamCode] : undefined
+            if (!g) return <span>no game {state.slateToday ? 'tonight' : 'tomorrow'}</span>
+            return (
+              <span className="text-[var(--color-accent)]">
+                {g.home ? 'vs' : '@'} {g.opp}
+                {g.state === 'pre' ? ` · ${fmtTip(g.tip)}` : g.state === 'in' ? ' · live' : ' · final'}
+              </span>
+            )
+          }}
           maxSalary={Math.max(
             1,
             ...state.freeAgents.map((p) => p.salary ?? 0),

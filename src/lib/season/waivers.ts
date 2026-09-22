@@ -29,6 +29,9 @@ const ET_HOUR = new Intl.DateTimeFormat('en-US', {
 })
 
 export function nextClearDate(now = new Date()): string {
+  // The overnight window belongs to the MORNING it ends in: a claim at
+  // 12:10am clears at 8am the same day, not a day later.
+  if (Number(ET_HOUR.format(now)) < 8) return easternToday(now)
   return easternToday(new Date(now.getTime() + 24 * 3600 * 1000))
 }
 

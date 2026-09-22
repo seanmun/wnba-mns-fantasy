@@ -90,6 +90,7 @@ export function StatTable({
   defaultSort = 'ppg',
   maxSalary,
   onSelect,
+  note,
 }: {
   players: StatRowPlayer[]
   stats: Record<string, StatAvg>
@@ -99,6 +100,8 @@ export function StatTable({
   maxSalary?: number
   /** Tapping a player's name opens their card. */
   onSelect?: (p: StatRowPlayer) => void
+  /** Extra line under position/team — the day's game, say. */
+  note?: (p: StatRowPlayer) => ReactNode
 }) {
   const [sortBy, setSortBy] = useState<SortKey>(defaultSort)
   const [asc, setAsc] = useState(false)
@@ -186,6 +189,7 @@ export function StatTable({
                     </span>
                     <span className="block text-xs text-[var(--color-muted-foreground)]">
                       {[p.position, p.teamCode].filter(Boolean).join(' · ')}
+                      {note ? <> — {note(p)}</> : null}
                     </span>
                   </button>
                 </td>
