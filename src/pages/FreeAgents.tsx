@@ -323,13 +323,18 @@ export function FreeAgents() {
           )}
           action={(p) =>
             state.myTeamId ? (
-              <Button
-                variant={adds.includes(p.id) ? 'primary' : 'quiet'}
-                aria-label={adds.includes(p.id) ? `${p.name} is pick ${adds.indexOf(p.id) + 1}` : `Add ${p.name}`}
+              <button
+                aria-label={adds.includes(p.id) ? `${p.name} selected` : `Add ${p.name}`}
                 onClick={() => toggleAdd(p.id)}
+                className={
+                  'inline-flex items-center justify-center w-8 h-8 min-h-0 rounded-full border text-sm font-bold ' +
+                  (adds.includes(p.id)
+                    ? 'border-[var(--color-accent)] text-[var(--color-accent)] bg-[var(--color-accent)]/10'
+                    : 'border-[var(--color-border-interactive)] text-[var(--color-muted-foreground)]')
+                }
               >
-                {adds.includes(p.id) ? `#${adds.indexOf(p.id) + 1}` : <Plus aria-hidden />}
-              </Button>
+                {adds.includes(p.id) ? '✓' : <Plus aria-hidden className="w-4 h-4" />}
+              </button>
             ) : null
           }
         />
