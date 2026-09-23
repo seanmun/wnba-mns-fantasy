@@ -51,6 +51,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           salary: p.salary,
           slot: p.slot,
           isRookie: p.isRookie,
+          yearsPro: p.yearsPro,
+          leaguePresence: p.leaguePresence,
+          presenceOverride: p.presenceOverride,
+          redshirtUsed: p.redshirtUsed,
           teamId: p.teamId,
           teamName,
           injuryStatus: p.injuryStatus,
@@ -102,6 +106,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (parsed.data.teamId !== undefined) updates.teamId = parsed.data.teamId
   if (parsed.data.slot !== undefined) updates.slot = parsed.data.slot
   if (parsed.data.position !== undefined) updates.position = parsed.data.position
+  // The commissioner's correction to ESPN's presence heuristic: is she
+  // really with a club, holding rights only, or abroad? This decides
+  // redshirt vs international-stash eligibility, so it belongs to a
+  // person, not a jersey lookup. null clears it back to the feed.
+  if (req.body?.presenceOverride !== undefined) {
+    const v = req.body.presenceOverride
+    if (v !== null && !['rostered', 'rights_only', 'absent'].includes(String(v))) {
+      return res
+        .status(400)
+        .json({ error: 'presenceOverride must be rostered, rights_only, absent, or null.' })
+    }
+    updates.presenceOverride = v === null ? null : String(v)
+  }
   if (parsed.data.keeperPriorYearRound !== undefined)
     updates.keeperPriorYearRound = parsed.data.keeperPriorYearRound
   if (parsed.data.migratedKeeperRound !== undefined)

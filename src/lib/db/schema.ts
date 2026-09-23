@@ -188,6 +188,18 @@ export const mnsPlayers = wnbaSchema.table(
     // eligibility is SPENT, which is what redshirt_used remembers.
     redshirtedAt: timestamp('redshirted_at'),
     redshirtUsed: boolean('redshirt_used').notNull().default(false),
+    // Years in the league from ESPN (0 = rookie). The real rookie
+    // test; players.is_rookie is kept in sync from it.
+    yearsPro: integer('years_pro'),
+    // Where she actually IS, derived weekly from ESPN rosters:
+    //   rostered    — on a WNBA roster WITH a jersey: really here
+    //   rights_only — on a roster with no jersey: drafted, not reported
+    //   absent      — on no WNBA roster: playing elsewhere
+    // ESPN publishes no "did not report" flag, so rights_only is a
+    // heuristic — presence_override is the commissioner's correction
+    // and always wins.
+    leaguePresence: text('league_presence'),
+    presenceOverride: text('presence_override'),
     // From ESPN team rosters, refreshed weekly — the veteran-vs-youth
     // signal the assistant reasons with.
     age: integer('age'),

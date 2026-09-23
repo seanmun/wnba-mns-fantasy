@@ -37,6 +37,9 @@ export interface Player {
   onIR: boolean
   age?: number | null
   redshirtUsed?: boolean
+  yearsPro?: number | null
+  leaguePresence?: string | null
+  presenceOverride?: string | null
   injuryStatus?: string | null
   injuryNote?: string | null
   injuryUpdatedAt?: string | null

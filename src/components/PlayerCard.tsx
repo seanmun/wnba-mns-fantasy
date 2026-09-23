@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
+import { useUser } from '@clerk/clerk-react'
+import { toast } from 'sonner'
 import { useApi } from '../hooks/useApi'
+import { useLeague } from '../contexts/LeagueContext'
+import { Button } from '../ui/components'
 import { Sheet, Chip, Skeleton } from '../ui/components'
 import { PlayerName } from './InjuryTag'
 import { RANGE_LABELS, type StatAvg } from './StatTable'
@@ -12,6 +17,10 @@ import { RANGE_LABELS, type StatAvg } from './StatTable'
 interface CardPlayer {
   id: string
   name: string
+  yearsPro?: number | null
+  leaguePresence?: string | null
+  presenceOverride?: string | null
+  redshirtUsed?: boolean
   position: string | null
   teamCode: string | null
   salary: number | null
@@ -88,6 +97,81 @@ export function PlayerCard({
   )
 }
 
+// The commissioner's correction to ESPN's read. Owners see the status
+// as plain words; only the commissioner can change it, and the
+// override then drives redshirt vs stash eligibility.
+const PRESENCE_LABEL: Record<string, string> = {
+  rostered: 'With a WNBA club',
+  rights_only: 'Drafted, has not reported',
+  absent: 'Not in the league — playing elsewhere',
+}
+
+function PresenceControl({ player }: { player: CardPlayer }) {
+  const { leagueId = '' } = useParams()
+  const { user } = useUser()
+  const { apiFetch } = useApi()
+  const { currentLeague } = useLeague()
+  const [value, setValue] = useState(player.presenceOverride ?? player.leaguePresence ?? 'absent')
+  const [busy, setBusy] = useState(false)
+  const isCommissioner = !!user && currentLeague?.commissionerId === user.id
+  const overridden = !!player.presenceOverride
+
+  const save = async (next: string | null) => {
+    setBusy(true)
+    try {
+      await apiFetch(`/api/leagues/${leagueId}/players/${player.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ presenceOverride: next }),
+      })
+      setValue(next ?? player.leaguePresence ?? 'absent')
+      toast.success(next ? 'Status corrected' : 'Back to the live feed')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not save')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-[var(--color-border)] bg-mns-card p-3 text-sm">
+      <div className="flex items-baseline justify-between gap-2">
+        <b>League status</b>
+        {overridden ? (
+          <span className="text-xs text-[var(--color-key,#ffb000)]">set by the commissioner</span>
+        ) : null}
+      </div>
+      <p className="mt-1">{PRESENCE_LABEL[value] ?? 'Unknown'}</p>
+      <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
+        This decides who can be redshirted (a rookie who is here) versus stashed (anyone playing
+        elsewhere). Read from the league's rosters — a player with no jersey is counted as not
+        reported.
+      </p>
+      {isCommissioner ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <select
+            value={value}
+            disabled={busy}
+            onChange={(e) => void save(e.target.value)}
+            className="px-3 py-2 min-h-[2.75rem] rounded-lg bg-[var(--color-background)] border border-[var(--color-border-interactive)] text-[var(--color-foreground)]"
+            aria-label="Correct this player's league status"
+          >
+            {Object.entries(PRESENCE_LABEL).map(([k, label]) => (
+              <option key={k} value={k}>
+                {label}
+              </option>
+            ))}
+          </select>
+          {overridden ? (
+            <Button variant="quiet" onClick={() => void save(null)} disabled={busy}>
+              Use the feed
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function PlayerCardInner({
   playerId,
   ranges,
@@ -131,8 +215,15 @@ function PlayerCardInner({
           ) : null}
         </b>
         <p className="text-sm text-[var(--color-muted-foreground)]">
-          {[p.position, p.teamCode, fmtSalary(p.salary)].filter(Boolean).join(' · ')} ·{' '}
-          {p.teamName ?? 'Free agent'}
+          {[
+            p.position,
+            p.teamCode,
+            fmtSalary(p.salary),
+            p.yearsPro != null ? (p.yearsPro === 0 ? 'rookie' : `${p.yearsPro} yr pro`) : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}{' '}
+          · {p.teamName ?? 'Free agent'}
         </p>
       </div>
 
@@ -232,6 +323,8 @@ function PlayerCardInner({
           </table>
         </div>
       ) : null}
+
+      <PresenceControl player={p} />
 
       {log.length > 0 ? (
         <div className="overflow-x-auto rounded-lg border border-[var(--color-border)] bg-mns-card">

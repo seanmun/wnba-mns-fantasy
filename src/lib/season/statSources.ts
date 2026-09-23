@@ -199,8 +199,17 @@ export async function dayGames(date: string): Promise<Map<string, DayGame>> {
 // ESPN's league-wide injury report → players.injuryStatus/Note.
 // Full refresh each pass: players missing from the report are CLEARED
 // (healthy again), matched by normalized name like the stat ingest.
-// Player bios from ESPN team rosters — age today, more later. Weekly
-// cadence is plenty; matched by normalized name like everything else.
+// Player bios from ESPN team rosters: age, years pro, and WHERE SHE
+// ACTUALLY IS. Weekly cadence is plenty; matched by normalized name
+// like everything else.
+//
+// The presence read is what keeps a redshirt apart from an
+// international stash — both look like "0 games" from the box scores:
+//   rostered    — listed with a jersey: really with the club
+//   rights_only — listed with no jersey: drafted, never reported
+//   absent      — on no WNBA roster at all: playing elsewhere
+// ESPN has no explicit "did not report" flag, so rights_only is a
+// heuristic and the commissioner's presence_override always wins.
 export async function ingestBios(
   db: Db,
   leagueId: string
@@ -209,31 +218,75 @@ export async function ingestBios(
     sports?: Array<{ leagues?: Array<{ teams?: Array<{ team: { id: string } }> }> }>
   }
   const ids = (teams.sports?.[0]?.leagues?.[0]?.teams ?? []).map((t) => t.team.id)
-  const ageByName = new Map<string, number>()
+  interface Bio {
+    age: number | null
+    yearsPro: number | null
+    leaguePresence: 'rostered' | 'rights_only'
+  }
+  const byName = new Map<string, Bio>()
   for (const id of ids) {
     try {
       const roster = (await (await fetch(`${ESPN}/teams/${id}/roster`)).json()) as {
-        athletes?: Array<{ displayName?: string; fullName?: string; age?: number }>
+        athletes?: Array<{
+          displayName?: string
+          fullName?: string
+          age?: number
+          jersey?: string
+          experience?: { years?: number }
+        }>
       }
       for (const a of roster.athletes ?? []) {
         const name = a.displayName ?? a.fullName
-        if (name && a.age) ageByName.set(normName(name), a.age)
+        if (!name) continue
+        byName.set(normName(name), {
+          age: a.age ?? null,
+          yearsPro: a.experience?.years ?? null,
+          // A player with no number is not physically with the team.
+          leaguePresence: a.jersey ? 'rostered' : 'rights_only',
+        })
       }
     } catch {
       /* one team down never sinks the pass */
     }
   }
+  // An empty sweep means ESPN was unreachable — never rewrite the whole
+  // pool as "absent" off a failed fetch.
+  if (byName.size === 0) return { updated: 0 }
+
   const pool = (await db
-    .select({ id: mnsPlayers.id, name: mnsPlayers.name, age: mnsPlayers.age })
+    .select({
+      id: mnsPlayers.id,
+      name: mnsPlayers.name,
+      age: mnsPlayers.age,
+      yearsPro: mnsPlayers.yearsPro,
+      leaguePresence: mnsPlayers.leaguePresence,
+    })
     .from(mnsPlayers)
-    .where(eq(mnsPlayers.leagueId, leagueId))) as Array<{ id: string; name: string; age: number | null }>
+    .where(eq(mnsPlayers.leagueId, leagueId))) as Array<{
+    id: string
+    name: string
+    age: number | null
+    yearsPro: number | null
+    leaguePresence: string | null
+  }>
   let updated = 0
   for (const p of pool) {
-    const age = ageByName.get(normName(p.name))
-    if (age != null && age !== p.age) {
-      await db.update(mnsPlayers).set({ age }).where(eq(mnsPlayers.id, p.id))
-      updated++
-    }
+    const hit = byName.get(normName(p.name))
+    const age = hit?.age ?? p.age
+    const yearsPro = hit?.yearsPro ?? null
+    const presence = hit ? hit.leaguePresence : 'absent'
+    if (age === p.age && yearsPro === p.yearsPro && presence === p.leaguePresence) continue
+    await db
+      .update(mnsPlayers)
+      .set({
+        age,
+        yearsPro,
+        leaguePresence: presence,
+        // The flag every other page reads becomes real here.
+        ...(yearsPro != null ? { isRookie: yearsPro === 0 } : {}),
+      })
+      .where(eq(mnsPlayers.id, p.id))
+    updated++
   }
   return { updated }
 }

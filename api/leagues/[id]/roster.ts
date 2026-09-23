@@ -13,7 +13,7 @@ import type { LeagueConfig } from '../../../src/types/leagueConfig.js'
 import { logTransaction } from '../../../src/lib/season/waivers.js'
 import { effectiveSlots, isLockedDate, setSlotForDate, shiftDate } from '../../../src/lib/season/lineups.js'
 import { easternToday } from '../../../src/lib/season/score.js'
-import { redshirtEligible } from '../../../src/lib/season/roster.js'
+import { intStashEligible, redshirtEligible } from '../../../src/lib/season/roster.js'
 import { chargeFee } from '../../../src/lib/season/fees.js'
 import { mnsPlayerStatLines } from '../../../src/lib/db/schema.js'
 
@@ -37,10 +37,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const leagueId = String(req.query.id ?? '')
   const playerId = String(req.body?.playerId ?? '')
   const slot = String(req.body?.slot ?? '')
-  if (!playerId || !['active', 'bench', 'ir', 'redshirt', 'drop'].includes(slot)) {
-    return res
-      .status(400)
-      .json({ error: 'playerId and a slot (active, bench, ir, redshirt, drop) are required.' })
+  if (!playerId || !['active', 'bench', 'ir', 'redshirt', 'international', 'drop'].includes(slot)) {
+    return res.status(400).json({
+      error: 'playerId and a slot (active, bench, ir, redshirt, international, drop) are required.',
+    })
   }
   const today = easternToday()
   const date = String(req.body?.date ?? today)
@@ -86,20 +86,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // Going ON redshirt: rookies who have never played, only while the
-    // league allows it, and it costs the redshirt fee.
-    if (slot === 'redshirt') {
-      if (!config.roster?.redshirtsAllowed) {
-        return res.status(400).json({ error: 'This league does not use redshirts.' })
-      }
+    // Games on file — the shared half of both stash tests.
+    const gamesPlayedFor = async () => {
       const lines = await db
         .select({ min: mnsPlayerStatLines.min })
         .from(mnsPlayerStatLines)
         .where(
           and(eq(mnsPlayerStatLines.leagueId, leagueId), eq(mnsPlayerStatLines.playerId, playerId))
         )
-      const gamesPlayed = lines.filter((l) => (l.min ?? 0) > 0).length
-      const verdict = redshirtEligible(player, gamesPlayed)
+      return lines.filter((l) => (l.min ?? 0) > 0).length
+    }
+
+    // International stash: she is under contract somewhere else. No
+    // roster spot, no cap hit, no fee — and no eligibility to spend,
+    // so she can come back whenever she reports.
+    if (slot === 'international') {
+      if (!config.roster?.intStashAllowed) {
+        return res.status(400).json({ error: 'This league does not use international stashes.' })
+      }
+      const verdict = intStashEligible(player, await gamesPlayedFor())
+      if (!verdict.ok) return res.status(400).json({ error: verdict.reason })
+      await db
+        .update(mnsPlayers)
+        .set({ slot: 'international', onIR: false, isInternationalStash: true })
+        .where(and(eq(mnsPlayers.leagueId, leagueId), eq(mnsPlayers.id, playerId)))
+      await logTransaction(db, leagueId, 'add_drop', [mine.teamId], { stashed: player.name })
+      return res.status(200).json({ ok: true, playerId, slot: 'international' })
+    }
+
+    // Coming off a stash costs nothing — she simply reported.
+    if (player.slot === 'international' && slot !== 'drop') {
+      await db
+        .update(mnsPlayers)
+        .set({ slot: slot === 'ir' ? 'ir' : slot, onIR: slot === 'ir', isInternationalStash: false })
+        .where(and(eq(mnsPlayers.leagueId, leagueId), eq(mnsPlayers.id, playerId)))
+      await logTransaction(db, leagueId, 'add_drop', [mine.teamId], { returned: player.name })
+      return res.status(200).json({ ok: true, playerId, slot })
+    }
+
+    // Going ON redshirt: rookies who are with a club and have never
+    // played, only while the league allows it, for the redshirt fee.
+    if (slot === 'redshirt') {
+      if (!config.roster?.redshirtsAllowed) {
+        return res.status(400).json({ error: 'This league does not use redshirts.' })
+      }
+      const verdict = redshirtEligible(player, await gamesPlayedFor())
       if (!verdict.ok) return res.status(400).json({ error: verdict.reason })
 
       await db

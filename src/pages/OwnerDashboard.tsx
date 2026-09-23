@@ -42,6 +42,9 @@ interface RosterPlayer {
   onIR: boolean
   isRookie: boolean
   redshirtUsed?: boolean
+  yearsPro?: number | null
+  leaguePresence?: string | null
+  presenceOverride?: string | null
   injuryStatus?: string | null
   injuryNote?: string | null
   injuryUpdatedAt?: string | null
@@ -270,7 +273,7 @@ export function OwnerDashboard() {
 
   const moveSlot = async (
     playerId: string,
-    slot: 'active' | 'bench' | 'ir' | 'redshirt' | 'drop'
+    slot: 'active' | 'bench' | 'ir' | 'redshirt' | 'international' | 'drop'
   ) => {
     setBusy(true)
     try {
@@ -281,7 +284,10 @@ export function OwnerDashboard() {
         body: JSON.stringify(
           slot === 'drop' ||
           slot === 'redshirt' ||
-          players?.find((p) => p.id === playerId)?.slot === 'redshirt'
+          slot === 'international' ||
+          ['redshirt', 'international'].includes(
+            players?.find((p) => p.id === playerId)?.slot ?? ''
+          )
             ? { playerId, slot }
             : { playerId, slot, date: selDate }
         ),
@@ -492,11 +498,12 @@ export function OwnerDashboard() {
               ['bench', 'Bench — not scoring', bySlot('bench')],
               ['ir', 'IR — not scoring, no roster spot', bySlot('ir')],
               ['redshirt', 'Redshirt — no spot, no cap hit', bySlot('redshirt')],
+              ['international', 'International — stashed abroad', bySlot('international')],
             ] as const
           ).map(([slotKey, label, list]) =>
             slotKey === 'active' ||
             list.length > 0 ||
-            (mine && slotKey !== 'redshirt') ? (
+            (mine && slotKey !== 'redshirt' && slotKey !== 'international') ? (
               <section key={slotKey} className="mb-5">
                 <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-2">
                   {label} ({list.length})
@@ -652,7 +659,15 @@ export function OwnerDashboard() {
                                   <tr className="border-b border-[var(--color-border)] last:border-b-0">
                                     <td colSpan={13} className="px-2 py-1.5">
                                       <div className="flex flex-wrap gap-1.5 justify-start">
-                                        {slotKey === 'redshirt' ? (
+                                        {slotKey === 'international' ? (
+                                          <Button
+                                            variant="quiet"
+                                            onClick={() => moveSlot(p.id, 'active')}
+                                            disabled={busy}
+                                          >
+                                            Return
+                                          </Button>
+                                        ) : slotKey === 'redshirt' ? (
                                           <Button
                                             variant={confirmRs === p.id ? 'danger' : 'quiet'}
                                             onClick={() =>
@@ -681,9 +696,22 @@ export function OwnerDashboard() {
                                             IR
                                           </Button>
                                         ) : null}
+                                        {currentLeague?.config.roster?.intStashAllowed &&
+                                        slotKey !== 'international' &&
+                                        (p.presenceOverride ?? p.leaguePresence) !== 'rostered' &&
+                                        !(ranges?.season?.[p.id]?.gp ?? 0) ? (
+                                          <Button
+                                            variant="quiet"
+                                            onClick={() => moveSlot(p.id, 'international')}
+                                            disabled={busy}
+                                          >
+                                            Stash
+                                          </Button>
+                                        ) : null}
                                         {currentLeague?.config.roster?.redshirtsAllowed &&
                                         slotKey !== 'redshirt' &&
-                                        p.isRookie &&
+                                        (p.yearsPro != null ? p.yearsPro === 0 : p.isRookie) &&
+                                        (p.presenceOverride ?? p.leaguePresence) === 'rostered' &&
                                         !p.redshirtUsed &&
                                         !(ranges?.season?.[p.id]?.gp ?? 0) ? (
                                           <Button
