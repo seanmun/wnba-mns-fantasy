@@ -189,6 +189,95 @@ export function AdminLeague() {
               setConfig({ ...config, roster: { ...config.roster, starterSize: Number(v) } })
             }
           />
+          <Row label="Lineup Shape">
+            <div className="flex flex-col gap-2">
+              {(config.roster.positionSlots ?? []).map((ps, i) => (
+                <div key={i} className="flex gap-2">
+                  <select
+                    value={ps.code}
+                    onChange={(e) => {
+                      const next = [...(config.roster.positionSlots ?? [])]
+                      next[i] = { ...next[i], code: e.target.value }
+                      setConfig({ ...config, roster: { ...config.roster, positionSlots: next } })
+                    }}
+                    className={inputClass}
+                  >
+                    {['C', 'F', 'G', 'PG', 'SG', 'SF', 'PF', 'GF', 'FC', 'FLEX'].map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={0}
+                    value={ps.count}
+                    onChange={(e) => {
+                      const next = [...(config.roster.positionSlots ?? [])]
+                      next[i] = { ...next[i], count: Number(e.target.value) }
+                      setConfig({ ...config, roster: { ...config.roster, positionSlots: next } })
+                    }}
+                    className={inputClass + ' max-w-[6rem]'}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Remove slot"
+                    onClick={() => {
+                      const next = (config.roster.positionSlots ?? []).filter((_, j) => j !== i)
+                      setConfig({ ...config, roster: { ...config.roster, positionSlots: next } })
+                    }}
+                    className="px-3 text-gray-400 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() =>
+                  setConfig({
+                    ...config,
+                    roster: {
+                      ...config.roster,
+                      positionSlots: [
+                        ...(config.roster.positionSlots ?? []),
+                        { code: 'FLEX', count: 1 },
+                      ],
+                    },
+                  })
+                }
+                className="text-sm text-green-400 hover:text-green-300 self-start"
+              >
+                + Add a slot
+              </button>
+            </div>
+          </Row>
+          {(() => {
+            const slots = config.roster.positionSlots ?? []
+            const total = slots.reduce((n, x) => n + (x.count || 0), 0)
+            if (slots.length === 0) {
+              return (
+                <p className="text-xs text-gray-500 -mt-1">
+                  No shape set — the lineup is all-flex: any {config.roster.activeSize} players
+                  start. Add slots to require positions (2 C, 4 F, 4 G).
+                </p>
+              )
+            }
+            return (
+              <p
+                className={
+                  'text-xs -mt-1 ' +
+                  (total === config.roster.activeSize ? 'text-gray-500' : 'text-yellow-400')
+                }
+              >
+                {total} starting slots vs an active roster of {config.roster.activeSize}.
+                {total !== config.roster.activeSize
+                  ? ' These should match — otherwise some players can never start.'
+                  : ' FLEX slots take any position.'}
+              </p>
+            )
+          })()}
+
           <Row label="Redshirts Allowed">
             <Toggle
               value={config.roster.redshirtsAllowed}

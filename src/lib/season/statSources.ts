@@ -221,6 +221,7 @@ export async function ingestBios(
   interface Bio {
     age: number | null
     yearsPro: number | null
+    position: string | null
     leaguePresence: 'rostered' | 'rights_only'
   }
   const byName = new Map<string, Bio>()
@@ -233,6 +234,7 @@ export async function ingestBios(
           age?: number
           jersey?: string
           experience?: { years?: number }
+          position?: { abbreviation?: string }
         }>
       }
       for (const a of roster.athletes ?? []) {
@@ -241,6 +243,7 @@ export async function ingestBios(
         byName.set(normName(name), {
           age: a.age ?? null,
           yearsPro: a.experience?.years ?? null,
+          position: a.position?.abbreviation ?? null,
           // A player with no number is not physically with the team.
           leaguePresence: a.jersey ? 'rostered' : 'rights_only',
         })
@@ -259,6 +262,7 @@ export async function ingestBios(
       name: mnsPlayers.name,
       age: mnsPlayers.age,
       yearsPro: mnsPlayers.yearsPro,
+      position: mnsPlayers.position,
       leaguePresence: mnsPlayers.leaguePresence,
     })
     .from(mnsPlayers)
@@ -267,6 +271,7 @@ export async function ingestBios(
     name: string
     age: number | null
     yearsPro: number | null
+    position: string | null
     leaguePresence: string | null
   }>
   let updated = 0
@@ -274,13 +279,21 @@ export async function ingestBios(
     const hit = byName.get(normName(p.name))
     const age = hit?.age ?? p.age
     const yearsPro = hit?.yearsPro ?? null
+    const position = hit?.position ?? p.position
     const presence = hit ? hit.leaguePresence : 'absent'
-    if (age === p.age && yearsPro === p.yearsPro && presence === p.leaguePresence) continue
+    if (
+      age === p.age &&
+      yearsPro === p.yearsPro &&
+      position === p.position &&
+      presence === p.leaguePresence
+    )
+      continue
     await db
       .update(mnsPlayers)
       .set({
         age,
         yearsPro,
+        position,
         leaguePresence: presence,
         // The flag every other page reads becomes real here.
         ...(yearsPro != null ? { isRookie: yearsPro === 0 } : {}),

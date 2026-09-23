@@ -10,6 +10,7 @@ import { PlayerName } from '../components/InjuryTag'
 import { RangeChips, type RangeKey, type StatAvg } from '../components/StatTable'
 import { PlayerCard, isFreshNews } from '../components/PlayerCard'
 import { COUNTS_AGAINST_CAP, HOLDS_ROSTER_SPOT } from '../lib/season/roster'
+import { assignSlots } from '../lib/season/positions'
 
 interface OwnerInfo {
   userId: string | null
@@ -339,6 +340,14 @@ export function OwnerDashboard() {
   // the league pool.
   const salaryCeil = Math.max(1, ...players.map((p) => p.salary ?? 0))
 
+  // Which named slot each active player is filling today, and what the
+  // lineup still has open — the same matching the server enforces.
+  const shape = currentLeague?.config.roster?.positionSlots ?? []
+  const lineupFit = assignSlots(
+    roster.filter((p) => slotOf(p) === 'active').map((p) => ({ id: p.id, position: p.position })),
+    shape
+  )
+
   const today = etToday()
   const minDate = currentLeague?.config.season?.startDate ?? shiftDate(today, -7)
   const maxDate = shiftDate(today, 13)
@@ -507,6 +516,11 @@ export function OwnerDashboard() {
               <section key={slotKey} className="mb-5">
                 <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-2">
                   {label} ({list.length})
+                  {slotKey === 'active' && shape.length > 0 && lineupFit.openSlots.length > 0 ? (
+                    <span className="ml-2 normal-case tracking-normal font-normal text-[var(--color-key,#ffb000)]">
+                      open: {lineupFit.openSlots.join(', ')}
+                    </span>
+                  ) : null}
                 </h2>
                 {list.length === 0 ? (
                   <p className="text-sm text-[var(--color-muted-foreground)]">Empty.</p>
@@ -636,6 +650,11 @@ export function OwnerDashboard() {
                                         ) : null}
                                       </span>
                                       <span className="block text-xs text-[var(--color-muted-foreground)] truncate">
+                                        {shape.length > 0 && slotKey === 'active' && lineupFit.assignment.get(p.id) ? (
+                                          <b className="text-[var(--color-accent)]">
+                                            {lineupFit.assignment.get(p.id)}{' '}
+                                          </b>
+                                        ) : null}
                                         {[p.position, p.teamCode].filter(Boolean).join(' · ')}
                                         {day ? <> — {gameNote(p)}</> : null}
                                       </span>

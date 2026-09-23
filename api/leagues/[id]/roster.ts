@@ -14,6 +14,7 @@ import { logTransaction } from '../../../src/lib/season/waivers.js'
 import { effectiveSlots, isLockedDate, setSlotForDate, shiftDate } from '../../../src/lib/season/lineups.js'
 import { easternToday } from '../../../src/lib/season/score.js'
 import { intStashEligible, redshirtEligible } from '../../../src/lib/season/roster.js'
+import { assignSlots, noSlotReason } from '../../../src/lib/season/positions.js'
 import { chargeFee } from '../../../src/lib/season/fees.js'
 import { mnsPlayerStatLines } from '../../../src/lib/db/schema.js'
 
@@ -178,6 +179,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         dropped: player.name,
       })
       return res.status(200).json({ ok: true, playerId, dropped: true })
+    }
+
+    // Positional shape: a league can name its lineup (2 C, 4 F, 4 G) or
+    // run all-flex. Going ACTIVE has to leave every active player a
+    // distinct slot she qualifies for — dual-eligible players float,
+    // so this is a matching, not a tally.
+    const shape = config.roster?.positionSlots ?? []
+    if (slot === 'active' && shape.length > 0) {
+      const dated = await effectiveSlots(db, leagueId, mine.teamId, date)
+      const roster = await db
+        .select({ id: mnsPlayers.id, position: mnsPlayers.position })
+        .from(mnsPlayers)
+        .where(and(eq(mnsPlayers.leagueId, leagueId), eq(mnsPlayers.teamId, mine.teamId)))
+      const actives = roster.filter(
+        (r) => r.id === playerId || dated.get(r.id) === 'active'
+      )
+      const fit = assignSlots(actives, shape)
+      if (!fit.ok) {
+        // Name the player who cannot be placed — usually the one just
+        // moved, but the matching decides.
+        const stuck = fit.unplaced.includes(playerId) ? player : null
+        const without = assignSlots(
+          actives.filter((r) => r.id !== playerId),
+          shape
+        )
+        return res.status(400).json({
+          error: noSlotReason((stuck ?? player).position, without.openSlots),
+        })
+      }
     }
 
     await setSlotForDate(

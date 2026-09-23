@@ -27,6 +27,10 @@ export interface LeagueConfig {
   }
   roster: {
     activeSize: number
+    // The active lineup's shape, e.g. [{C:2},{F:4},{G:4}]. Empty or
+    // absent means all-flex — any activeSize players, which is how
+    // Beta Babes runs. FLEX/UTIL slots take anyone.
+    positionSlots?: Array<{ code: string; count: number }>
     starterSize: number
     irSlots: number
     benchAllowed: boolean
