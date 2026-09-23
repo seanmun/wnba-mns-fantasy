@@ -183,6 +183,11 @@ export const mnsPlayers = wnbaSchema.table(
     // Declared for next season during keeper_season; consumed when the
     // commissioner locks keepers and releases everyone else.
     isKeeper: boolean('is_keeper').notNull().default(false),
+    // Redshirt: a rookie who has never played, parked for the season —
+    // no roster spot, no cap hit, a fee each way. Once activated the
+    // eligibility is SPENT, which is what redshirt_used remembers.
+    redshirtedAt: timestamp('redshirted_at'),
+    redshirtUsed: boolean('redshirt_used').notNull().default(false),
     // From ESPN team rosters, refreshed weekly — the veteran-vs-youth
     // signal the assistant reasons with.
     age: integer('age'),
@@ -686,6 +691,7 @@ export const mnsTeamFees = wnbaSchema.table(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (t) => [
+    unique('mns_team_fees_season_key').on(t.leagueId, t.teamId, t.seasonYear),
     index('idx_mns_team_fees_league').on(t.leagueId),
     index('idx_mns_team_fees_team').on(t.teamId),
   ]

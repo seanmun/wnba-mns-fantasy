@@ -9,6 +9,7 @@ import { useLeague } from '../contexts/LeagueContext'
 import { PlayerName } from '../components/InjuryTag'
 import { RangeChips, type RangeKey, type StatAvg } from '../components/StatTable'
 import { PlayerCard, isFreshNews } from '../components/PlayerCard'
+import { COUNTS_AGAINST_CAP, HOLDS_ROSTER_SPOT } from '../lib/season/roster'
 
 interface OwnerInfo {
   userId: string | null
@@ -40,6 +41,7 @@ interface RosterPlayer {
   slot: string | null
   onIR: boolean
   isRookie: boolean
+  redshirtUsed?: boolean
   injuryStatus?: string | null
   injuryNote?: string | null
   injuryUpdatedAt?: string | null
@@ -209,6 +211,7 @@ export function OwnerDashboard() {
   const [day, setDay] = useState<LineupDay | null>(null)
   const [openRow, setOpenRow] = useState<string | null>(null)
   const [confirmDrop, setConfirmDrop] = useState<string | null>(null)
+  const [confirmRs, setConfirmRs] = useState<string | null>(null)
   const [claims, setClaims] = useState<PendingClaim[]>([])
   const [showSettings, setShowSettings] = useState(false)
   const [range, setRange] = useState<RangeKey>('season')
@@ -265,15 +268,27 @@ export function OwnerDashboard() {
       .catch(() => setRanges({}))
   }, [apiFetch, leagueId])
 
-  const moveSlot = async (playerId: string, slot: 'active' | 'bench' | 'ir' | 'drop') => {
+  const moveSlot = async (
+    playerId: string,
+    slot: 'active' | 'bench' | 'ir' | 'redshirt' | 'drop'
+  ) => {
     setBusy(true)
     try {
       await apiFetch(`/api/leagues/${leagueId}/roster`, {
         method: 'POST',
-        body: JSON.stringify(slot === 'drop' ? { playerId, slot } : { playerId, slot, date: selDate }),
+        // Drops and redshirt moves are season acts, not daily lineup
+        // moves — they carry no date.
+        body: JSON.stringify(
+          slot === 'drop' ||
+          slot === 'redshirt' ||
+          players?.find((p) => p.id === playerId)?.slot === 'redshirt'
+            ? { playerId, slot }
+            : { playerId, slot, date: selDate }
+        ),
       })
       setOpenRow(null)
       setConfirmDrop(null)
+      setConfirmRs(null)
       load()
       loadDay()
     } catch (e) {
@@ -308,7 +323,10 @@ export function OwnerDashboard() {
   const roster = players
     .filter((p) => p.teamId === team.id)
     .sort((a, b) => (b.salary ?? 0) - (a.salary ?? 0))
-  const capUsed = roster.reduce((n, p) => n + (p.salary ?? 0), 0)
+  // Redshirts ride free against the cap and hold no roster spot.
+  const capUsed = roster
+    .filter((p) => COUNTS_AGAINST_CAP(p.slot))
+    .reduce((n, p) => n + (p.salary ?? 0), 0)
   const mine = team.owners.some((o) => o.userId != null && o.userId === user?.id)
 
   // The 100% mark for the salary wash: the biggest salary anywhere in
@@ -394,7 +412,7 @@ export function OwnerDashboard() {
 
       {(() => {
         const activeSize = currentLeague?.config.roster?.activeSize ?? 10
-        const nonIr = roster.filter((p) => (p.slot ?? 'active') !== 'ir').length
+        const nonIr = roster.filter((p) => HOLDS_ROSTER_SPOT(p.slot ?? 'active')).length
         return mine && nonIr > activeSize ? (
           <div className="mb-4 rounded-lg border border-[var(--color-pick-loss,#ff453a)] bg-mns-card p-3 text-sm">
             <b className="text-[var(--color-pick-loss,#ff453a)]">
@@ -472,10 +490,13 @@ export function OwnerDashboard() {
             [
               ['active', 'Active — these score', bySlot('active')],
               ['bench', 'Bench — not scoring', bySlot('bench')],
-              ['ir', 'IR — not scoring', bySlot('ir')],
+              ['ir', 'IR — not scoring, no roster spot', bySlot('ir')],
+              ['redshirt', 'Redshirt — no spot, no cap hit', bySlot('redshirt')],
             ] as const
           ).map(([slotKey, label, list]) =>
-            slotKey === 'active' || list.length > 0 || mine ? (
+            slotKey === 'active' ||
+            list.length > 0 ||
+            (mine && slotKey !== 'redshirt') ? (
               <section key={slotKey} className="mb-5">
                 <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-2">
                   {label} ({list.length})
@@ -631,7 +652,21 @@ export function OwnerDashboard() {
                                   <tr className="border-b border-[var(--color-border)] last:border-b-0">
                                     <td colSpan={13} className="px-2 py-1.5">
                                       <div className="flex flex-wrap gap-1.5 justify-start">
-                                        {slotKey !== 'active' ? (
+                                        {slotKey === 'redshirt' ? (
+                                          <Button
+                                            variant={confirmRs === p.id ? 'danger' : 'quiet'}
+                                            onClick={() =>
+                                              confirmRs === p.id
+                                                ? moveSlot(p.id, 'active')
+                                                : setConfirmRs(p.id)
+                                            }
+                                            disabled={busy}
+                                          >
+                                            {confirmRs === p.id
+                                              ? `Activate — $${currentLeague?.config.fees?.activationFee ?? 0} fee, redshirt spent`
+                                              : 'Activate'}
+                                          </Button>
+                                        ) : slotKey !== 'active' ? (
                                           <Button variant="quiet" onClick={() => moveSlot(p.id, 'active')} disabled={busy}>
                                             Start
                                           </Button>
@@ -644,6 +679,25 @@ export function OwnerDashboard() {
                                         {slotKey !== 'ir' ? (
                                           <Button variant="quiet" onClick={() => moveSlot(p.id, 'ir')} disabled={busy}>
                                             IR
+                                          </Button>
+                                        ) : null}
+                                        {currentLeague?.config.roster?.redshirtsAllowed &&
+                                        slotKey !== 'redshirt' &&
+                                        p.isRookie &&
+                                        !p.redshirtUsed &&
+                                        !(ranges?.season?.[p.id]?.gp ?? 0) ? (
+                                          <Button
+                                            variant={confirmRs === p.id ? 'danger' : 'quiet'}
+                                            onClick={() =>
+                                              confirmRs === p.id
+                                                ? moveSlot(p.id, 'redshirt')
+                                                : setConfirmRs(p.id)
+                                            }
+                                            disabled={busy}
+                                          >
+                                            {confirmRs === p.id
+                                              ? `Confirm — $${currentLeague?.config.fees?.redshirtFee ?? 0} fee`
+                                              : 'Redshirt'}
                                           </Button>
                                         ) : null}
                                         {isToday ? (

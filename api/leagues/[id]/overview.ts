@@ -13,6 +13,7 @@ import {
 import { computeStandings, easternToday } from '../../../src/lib/season/score.js'
 import { dayGames } from '../../../src/lib/season/statSources.js'
 import { faWindow, nextClearDate } from '../../../src/lib/season/waivers.js'
+import { capUsed, rosterSpots } from '../../../src/lib/season/roster.js'
 import { logger } from '../../_logger.js'
 import type { LeagueConfig } from '../../../src/types/leagueConfig.js'
 
@@ -62,8 +63,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           losses: r.losses,
           ties: r.ties,
           categoryPoints: r.pointsFor,
-          rosterCount: roster.length,
-          salary: roster.reduce((n, p) => n + (p.salary ?? 0), 0),
+          rosterCount: rosterSpots(players, t.id).length,
+          redshirts: roster.filter((p) => p.slot === 'redshirt').length,
+          salary: capUsed(players, t.id),
         }
       })
       .sort((a, b) => b.wins - a.wins || b.categoryPoints - a.categoryPoints)

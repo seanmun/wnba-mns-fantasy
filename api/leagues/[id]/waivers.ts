@@ -19,6 +19,7 @@ import {
 } from '../../../src/lib/season/waivers.js'
 import { seasonAverages } from '../../../src/lib/season/stats.js'
 import { sendWaiverResults } from '../../_notify.js'
+import { capUsed, rosterSpots } from '../../../src/lib/season/roster.js'
 import { dayGames } from '../../../src/lib/season/statSources.js'
 import { easternToday } from '../../../src/lib/season/score.js'
 import { logger } from '../../_logger.js'
@@ -142,7 +143,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // IR doesn't occupy a spot — that's what the slots are FOR. A
       // team over the limit (a 2-for-1 trade) is frozen out of adds
       // entirely until it gets legal.
-      const myCount = players.filter((p) => p.teamId === mine.teamId && p.slot !== 'ir').length
+      const myCount = rosterSpots(players, mine.teamId).length
       if (myCount > activeSize) {
         return res.status(400).json({
           error: `Your roster is over the limit (${myCount} for ${activeSize} spots) — drop or IR someone before adding.`,
@@ -175,9 +176,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .select({ teamId: mnsPlayers.teamId, salary: mnsPlayers.salary, id: mnsPlayers.id })
             .from(mnsPlayers)
             .where(eq(mnsPlayers.leagueId, leagueId))
-          const rosterSalary = rows
-            .filter((p) => p.teamId === mine.teamId)
-            .reduce((n, p) => n + (p.salary ?? 0), 0)
+          const rosterSalary = capUsed(rows, mine.teamId)
           const addSal = rows.find((p) => p.id === addId)?.salary ?? 0
           const dropSal = dropPlayerId ? rows.find((p) => p.id === dropPlayerId)?.salary ?? 0 : 0
           if (rosterSalary - dropSal + addSal > config.cap.hardCap) {

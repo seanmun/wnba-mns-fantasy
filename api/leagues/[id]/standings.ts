@@ -5,6 +5,7 @@ import { verifyAuth } from '../../_middleware.js'
 import { db } from '../../_db.js'
 import { mnsLeagues, mnsPlayers, mnsPlayerStatLines, mnsTeamOwners, mnsTeams } from '../../../src/lib/db/schema.js'
 import { computeStandings } from '../../../src/lib/season/score.js'
+import { COUNTS_AGAINST_CAP } from '../../../src/lib/season/roster.js'
 import { logger } from '../../_logger.js'
 
 // GET /api/leagues/:id/standings — teams with banked records from
@@ -34,14 +35,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const rec = await computeStandings(db, leagueId, league?.seasonYear)
     const salaries = await db
-      .select({ teamId: mnsPlayers.teamId, salary: mnsPlayers.salary, id: mnsPlayers.id })
+      .select({ teamId: mnsPlayers.teamId, salary: mnsPlayers.salary, id: mnsPlayers.id, slot: mnsPlayers.slot })
       .from(mnsPlayers)
       .where(eq(mnsPlayers.leagueId, leagueId))
     const salaryByTeam = new Map<string, number>()
     const teamOfPlayer = new Map<string, string>()
     for (const p of salaries) {
       if (!p.teamId) continue
-      salaryByTeam.set(p.teamId, (salaryByTeam.get(p.teamId) ?? 0) + (p.salary ?? 0))
+      if (COUNTS_AGAINST_CAP(p.slot)) {
+        salaryByTeam.set(p.teamId, (salaryByTeam.get(p.teamId) ?? 0) + (p.salary ?? 0))
+      }
       teamOfPlayer.set(p.id, p.teamId)
     }
 

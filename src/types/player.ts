@@ -36,6 +36,7 @@ export interface Player {
   slot: PlayerSlot
   onIR: boolean
   age?: number | null
+  redshirtUsed?: boolean
   injuryStatus?: string | null
   injuryNote?: string | null
   injuryUpdatedAt?: string | null

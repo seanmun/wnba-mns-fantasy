@@ -12,7 +12,7 @@ import { easternToday } from './score.js'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any
 
-export type Slot = 'active' | 'bench' | 'ir'
+export type Slot = 'active' | 'bench' | 'ir' | 'redshirt'
 
 const DAY_MS = 24 * 3600 * 1000
 
@@ -137,7 +137,11 @@ export async function applyLineupsForToday(db: Db, leagueId: string, now = new D
   }>
   let changed = 0
   for (const p of roster) {
+    // Redshirt is a season act with a fee attached — the daily
+    // rollover never activates one.
+    if (p.slot === 'redshirt') continue
     const eff = resolve(p.teamId, p.id, today, p.slot)
+    if (eff === 'redshirt') continue
     if (eff !== (p.slot ?? 'active')) {
       await db
         .update(mnsPlayers)

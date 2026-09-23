@@ -189,6 +189,19 @@ export function AdminLeague() {
               setConfig({ ...config, roster: { ...config.roster, starterSize: Number(v) } })
             }
           />
+          <Row label="Redshirts Allowed">
+            <Toggle
+              value={config.roster.redshirtsAllowed}
+              onChange={(v) =>
+                setConfig({ ...config, roster: { ...config.roster, redshirtsAllowed: v } })
+              }
+            />
+          </Row>
+          <p className="text-xs text-gray-500 -mt-1">
+            Rookies who have never played can be parked for the season: no roster spot, no cap
+            hit, the redshirt fee to place and the activation fee to bring back — once activated,
+            that player can never be redshirted again.
+          </p>
           <NumRow
             label="IR Slots"
             value={config.roster.irSlots}

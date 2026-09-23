@@ -15,6 +15,7 @@ import { isTradeDeadlinePassed } from '../../../src/rules/tradeRules.js'
 import { pickBoard as sharedPickBoard } from '../../../src/lib/season/picks.js'
 import { logTransaction } from '../../../src/lib/season/waivers.js'
 import { sendTradeNote } from '../../_notify.js'
+import { capUsed, rosterSpots } from '../../../src/lib/season/roster.js'
 import { logger } from '../../_logger.js'
 import type { TradeAsset } from '../../../src/types/trade.js'
 import type { LeagueConfig } from '../../../src/types/leagueConfig.js'
@@ -120,11 +121,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       const activeSize = config.roster?.activeSize ?? 10
       const sideView = (teamId: string, outIds: string[], inIds: string[]) => {
-        const roster = all.filter((p) => p.teamId === teamId)
-        const salary = roster.reduce((n, p) => n + (p.salary ?? 0), 0)
+        const salary = capUsed(all, teamId)
         const outSal = outIds.reduce((n, id) => n + (byId.get(id)?.salary ?? 0), 0)
         const inSal = inIds.reduce((n, id) => n + (byId.get(id)?.salary ?? 0), 0)
-        const nonIr = roster.filter((p) => p.slot !== 'ir').length
+        const nonIr = rosterSpots(all, teamId).length
         return {
           teamId,
           salaryBefore: salary,
@@ -334,7 +334,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .from(mnsPlayers)
         .where(eq(mnsPlayers.leagueId, leagueId))
       const nonIr = (teamId: string) =>
-        allForCount.filter((p) => p.teamId === teamId && p.slot !== 'ir').length
+        rosterSpots(allForCount, teamId).length
       for (const teamId of involved) {
         const current = nonIr(teamId)
         const outN = playerAssets.filter((a) => a.fromTeamId === teamId).length
@@ -354,9 +354,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .from(mnsPlayers)
           .where(eq(mnsPlayers.leagueId, leagueId))
         for (const teamId of involved) {
-          const current = all
-            .filter((p) => p.teamId === teamId)
-            .reduce((n, p) => n + (p.salary ?? 0), 0)
+          const current = capUsed(all, teamId)
           const out = assets.filter((a) => a.fromTeamId === teamId).reduce((n, a) => n + (a.salary ?? 0), 0)
           const inn = assets.filter((a) => a.toTeamId === teamId).reduce((n, a) => n + (a.salary ?? 0), 0)
           if (current - out + inn > config.cap.hardCap) {

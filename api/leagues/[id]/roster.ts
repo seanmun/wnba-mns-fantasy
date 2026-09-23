@@ -13,6 +13,9 @@ import type { LeagueConfig } from '../../../src/types/leagueConfig.js'
 import { logTransaction } from '../../../src/lib/season/waivers.js'
 import { effectiveSlots, isLockedDate, setSlotForDate, shiftDate } from '../../../src/lib/season/lineups.js'
 import { easternToday } from '../../../src/lib/season/score.js'
+import { redshirtEligible } from '../../../src/lib/season/roster.js'
+import { chargeFee } from '../../../src/lib/season/fees.js'
+import { mnsPlayerStatLines } from '../../../src/lib/db/schema.js'
 
 // Roster slots, an OWNER act: move your own players between Active,
 // Bench and IR — for a DATE. Only ACTIVE players score, judged per
@@ -21,7 +24,11 @@ import { easternToday } from '../../../src/lib/season/score.js'
 // IR is capped by config.roster.irSlots. 'drop' is immediate (always
 // today): the player hits free agency now.
 //
-// POST /api/leagues/:id/roster { playerId, slot: 'active'|'bench'|'ir'|'drop', date? }
+// Redshirt is its own act: a rookie who has never played parks for the
+// season — no roster spot, no cap hit, a league fee each way, and
+// activating spends the eligibility for good.
+//
+// POST /api/leagues/:id/roster { playerId, slot: 'active'|'bench'|'ir'|'redshirt'|'drop', date? }
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
   const userId = await verifyAuth(req)
@@ -30,8 +37,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const leagueId = String(req.query.id ?? '')
   const playerId = String(req.body?.playerId ?? '')
   const slot = String(req.body?.slot ?? '')
-  if (!playerId || !['active', 'bench', 'ir', 'drop'].includes(slot)) {
-    return res.status(400).json({ error: 'playerId and a slot (active, bench, ir, drop) are required.' })
+  if (!playerId || !['active', 'bench', 'ir', 'redshirt', 'drop'].includes(slot)) {
+    return res
+      .status(400)
+      .json({ error: 'playerId and a slot (active, bench, ir, redshirt, drop) are required.' })
   }
   const today = easternToday()
   const date = String(req.body?.date ?? today)
@@ -75,6 +84,56 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (irCount >= irCap) {
         return res.status(400).json({ error: `IR is full — this league allows ${irCap}.` })
       }
+    }
+
+    // Going ON redshirt: rookies who have never played, only while the
+    // league allows it, and it costs the redshirt fee.
+    if (slot === 'redshirt') {
+      if (!config.roster?.redshirtsAllowed) {
+        return res.status(400).json({ error: 'This league does not use redshirts.' })
+      }
+      const lines = await db
+        .select({ min: mnsPlayerStatLines.min })
+        .from(mnsPlayerStatLines)
+        .where(
+          and(eq(mnsPlayerStatLines.leagueId, leagueId), eq(mnsPlayerStatLines.playerId, playerId))
+        )
+      const gamesPlayed = lines.filter((l) => (l.min ?? 0) > 0).length
+      const verdict = redshirtEligible(player, gamesPlayed)
+      if (!verdict.ok) return res.status(400).json({ error: verdict.reason })
+
+      await db
+        .update(mnsPlayers)
+        .set({ slot: 'redshirt', onIR: false, redshirtedAt: new Date() })
+        .where(and(eq(mnsPlayers.leagueId, leagueId), eq(mnsPlayers.id, playerId)))
+      const fee = config.fees?.redshirtFee ?? 0
+      await chargeFee(db, leagueId, mine.teamId, league.seasonYear, 'redshirt', fee, player.name)
+      await logTransaction(db, leagueId, 'add_drop', [mine.teamId], {
+        redshirted: player.name,
+        fee,
+      })
+      return res.status(200).json({ ok: true, playerId, slot: 'redshirt', fee })
+    }
+
+    // Coming OFF redshirt mid-season: costs the activation fee and
+    // burns the eligibility — she can never be redshirted again.
+    if (player.slot === 'redshirt' && slot !== 'drop') {
+      const fee = config.fees?.activationFee ?? 0
+      await db
+        .update(mnsPlayers)
+        .set({
+          slot: slot === 'ir' ? 'ir' : slot,
+          onIR: slot === 'ir',
+          redshirtUsed: true,
+          redshirtedAt: null,
+        })
+        .where(and(eq(mnsPlayers.leagueId, leagueId), eq(mnsPlayers.id, playerId)))
+      await chargeFee(db, leagueId, mine.teamId, league.seasonYear, 'unredshirt', fee, player.name)
+      await logTransaction(db, leagueId, 'add_drop', [mine.teamId], {
+        activated: player.name,
+        fee,
+      })
+      return res.status(200).json({ ok: true, playerId, slot, fee, redshirtSpent: true })
     }
 
     if (slot === 'drop') {

@@ -1,6 +1,7 @@
 import { and, eq, inArray, lte, sql } from 'drizzle-orm'
 import { mnsPlayers, mnsTeams, mnsTransactions, mnsWaiverClaims } from '../db/schema.js'
 import { easternToday } from './score.js'
+import { capUsed, rosterSpots } from './roster.js'
 import type { LeagueConfig } from '../../types/leagueConfig.js'
 
 // Free agency, Sean's spec from the live beta (2026-09-17):
@@ -203,8 +204,9 @@ export async function processWaivers(
     let reason: string | null = null
 
     // IR players don't hold a spot; an over-limit roster can't add.
-    const rosterCount = (players as Array<{ teamId: string | null; slot: string | null }>).filter(
-      (p) => p.teamId === claim.teamId && p.slot !== 'ir'
+    const rosterCount = rosterSpots(
+      players as Array<{ teamId: string | null; slot: string | null }>,
+      claim.teamId
     ).length
     if (rosterCount > activeSize) {
       await db
@@ -227,9 +229,10 @@ export async function processWaivers(
         const add = byId.get(addId) as { id: string; teamId: string | null; salary: number } | undefined
         if (!add || add.teamId != null) continue // taken (possibly by a better-ranked claim this pass)
         if (hardCap != null) {
-          const rosterSalary = (players as Array<{ teamId: string | null; salary: number }>)
-            .filter((p) => p.teamId === claim.teamId)
-            .reduce((n, p) => n + (p.salary ?? 0), 0)
+          const rosterSalary = capUsed(
+            players as Array<{ teamId: string | null; slot: string | null; salary: number }>,
+            claim.teamId
+          )
           if (rosterSalary - (drop?.salary ?? 0) + (add.salary ?? 0) > hardCap) {
             reason = 'That add would put you over the hard cap.'
             continue

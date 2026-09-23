@@ -5,6 +5,7 @@ import { useApi } from '../hooks/useApi'
 import { Button, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
 import { useLeague } from '../contexts/LeagueContext'
 import { PlayerName } from '../components/InjuryTag'
+import { COUNTS_AGAINST_CAP, HOLDS_ROSTER_SPOT } from '../lib/season/roster'
 import type { StatAvg } from '../components/StatTable'
 
 interface TeamRow {
@@ -388,12 +389,17 @@ function CapCalculator({
   const M = 1_000_000
   const fmtM = (n: number) => `$${(n / M).toFixed(2)}M`
   const salaryOf = (ids: string[]) =>
-    ids.reduce((n, id) => n + (players.find((p) => p.id === id)?.salary ?? 0), 0)
+    ids.reduce((n, id) => {
+      const p = players.find((x) => x.id === id)
+      return n + (p && COUNTS_AGAINST_CAP(p.slot) ? p.salary ?? 0 : 0)
+    }, 0)
   const rosterSalary = (teamId: string | null) =>
-    players.filter((p) => p.teamId === teamId).reduce((n, p) => n + (p.salary ?? 0), 0)
+    players
+      .filter((p) => p.teamId === teamId && COUNTS_AGAINST_CAP(p.slot))
+      .reduce((n, p) => n + (p.salary ?? 0), 0)
 
   const nonIr = (teamId: string | null) =>
-    players.filter((p) => p.teamId === teamId && p.slot !== 'ir').length
+    players.filter((p) => p.teamId === teamId && HOLDS_ROSTER_SPOT(p.slot)).length
   const sides = [
     { label: 'You', teamId: myTeamId, out: salaryOf(give), inn: salaryOf(get), outN: give.length, inN: get.length },
     { label: withTeamName, teamId: withTeam, out: salaryOf(get), inn: salaryOf(give), outN: get.length, inN: give.length },
