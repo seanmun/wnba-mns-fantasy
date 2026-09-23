@@ -175,7 +175,7 @@ export async function processWaivers(
   }
 
   const players = await db
-    .select({ id: mnsPlayers.id, name: mnsPlayers.name, teamId: mnsPlayers.teamId, salary: mnsPlayers.salary })
+    .select({ id: mnsPlayers.id, name: mnsPlayers.name, teamId: mnsPlayers.teamId, salary: mnsPlayers.salary, slot: mnsPlayers.slot })
     .from(mnsPlayers)
     .where(eq(mnsPlayers.leagueId, leagueId))
   const byId = new Map(players.map((p: { id: string }) => [p.id, p]))
@@ -202,9 +202,22 @@ export async function processWaivers(
     let grantedId: string | null = null
     let reason: string | null = null
 
-    const rosterCount = (players as Array<{ teamId: string | null }>).filter(
-      (p) => p.teamId === claim.teamId
+    // IR players don't hold a spot; an over-limit roster can't add.
+    const rosterCount = (players as Array<{ teamId: string | null; slot: string | null }>).filter(
+      (p) => p.teamId === claim.teamId && p.slot !== 'ir'
     ).length
+    if (rosterCount > activeSize) {
+      await db
+        .update(mnsWaiverClaims)
+        .set({ status: 'failed', failureReason: 'Your roster is over the limit — drop or IR someone.', processedAt: now, updatedAt: now })
+        .where(eq(mnsWaiverClaims.id, claim.id))
+      result.failed++
+      outcome(claim.teamId).failed.push({
+        name: (byId.get((claim.addPlayerIds as string[])[0]) as { name?: string })?.name ?? 'claim',
+        reason: 'roster over the limit',
+      })
+      continue
+    }
     if (claim.dropPlayerId && (!drop || drop.teamId !== claim.teamId)) {
       reason = 'The player you offered to drop is no longer on your roster.'
     } else if (!claim.dropPlayerId && rosterCount >= activeSize) {

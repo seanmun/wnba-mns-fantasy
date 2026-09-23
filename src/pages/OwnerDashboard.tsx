@@ -391,6 +391,20 @@ export function OwnerDashboard() {
         <CapCard capUsed={capUsed} cap={currentLeague.config.cap} fees={currentLeague.config.fees} />
       ) : null}
 
+      {(() => {
+        const activeSize = currentLeague?.config.roster?.activeSize ?? 10
+        const nonIr = roster.filter((p) => (p.slot ?? 'active') !== 'ir').length
+        return mine && nonIr > activeSize ? (
+          <div className="mb-4 rounded-lg border border-[var(--color-pick-loss,#ff453a)] bg-mns-card p-3 text-sm">
+            <b className="text-[var(--color-pick-loss,#ff453a)]">
+              Roster over the limit — {nonIr} players for {activeSize} spots.
+            </b>{' '}
+            That trade came with homework: drop someone, or move an injured player to IR (IR
+            doesn&rsquo;t hold a spot). Adds and claims are frozen until you&rsquo;re legal.
+          </div>
+        ) : null
+      })()}
+
       {mine && claims.length > 0 ? (
         <div className="mb-4 rounded-lg border border-[var(--color-accent)] bg-mns-card p-3 text-sm">
           <b>Waiver queue in</b> — clears {claims[0].clearsOn} at 8am ET, snake order

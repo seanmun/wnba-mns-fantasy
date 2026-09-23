@@ -19,6 +19,7 @@ interface RosterPlayer {
   teamCode: string | null
   salary: number | null
   teamId: string | null
+  slot?: string | null
   injuryStatus?: string | null
 }
 interface PickAsset {
@@ -95,8 +96,20 @@ export function TradeMachine() {
   const act = async (body: Record<string, unknown>, okMsg: string) => {
     setBusy(true)
     try {
-      await apiFetch(`/api/leagues/${leagueId}/trades`, { method: 'POST', body: JSON.stringify(body) })
+      const r = await apiFetch<{ needsFix?: Array<{ teamId: string; over: number }> }>(
+        `/api/leagues/${leagueId}/trades`,
+        { method: 'POST', body: JSON.stringify(body) }
+      )
       toast.success(okMsg)
+      if (r.needsFix?.length) {
+        for (const fix of r.needsFix) {
+          const name = teams?.find((t) => t.id === fix.teamId)?.name ?? 'A team'
+          toast.warning(
+            `${name} is ${fix.over} over the roster limit — drop or IR to get legal. Adds are frozen until then.`,
+            { duration: 9000 }
+          )
+        }
+      }
       setGive([])
       setGet([])
       setGivePicks([])
@@ -295,6 +308,7 @@ export function TradeMachine() {
               give={give}
               get={get}
               cap={currentLeague?.config.cap ?? null}
+              activeSize={currentLeague?.config.roster?.activeSize ?? 10}
             />
           ) : null}
 
@@ -360,6 +374,7 @@ function CapCalculator({
   give,
   get,
   cap,
+  activeSize,
 }: {
   players: RosterPlayer[]
   myTeamId: string | null
@@ -368,6 +383,7 @@ function CapCalculator({
   give: string[]
   get: string[]
   cap: { floor: number; firstApron: number; secondApron: number; hardCap: number } | null
+  activeSize: number
 }) {
   const M = 1_000_000
   const fmtM = (n: number) => `$${(n / M).toFixed(2)}M`
@@ -376,9 +392,11 @@ function CapCalculator({
   const rosterSalary = (teamId: string | null) =>
     players.filter((p) => p.teamId === teamId).reduce((n, p) => n + (p.salary ?? 0), 0)
 
+  const nonIr = (teamId: string | null) =>
+    players.filter((p) => p.teamId === teamId && p.slot !== 'ir').length
   const sides = [
-    { label: 'You', teamId: myTeamId, out: salaryOf(give), inn: salaryOf(get) },
-    { label: withTeamName, teamId: withTeam, out: salaryOf(get), inn: salaryOf(give) },
+    { label: 'You', teamId: myTeamId, out: salaryOf(give), inn: salaryOf(get), outN: give.length, inN: get.length },
+    { label: withTeamName, teamId: withTeam, out: salaryOf(get), inn: salaryOf(give), outN: get.length, inN: give.length },
   ]
   return (
     <div className="mt-4 grid sm:grid-cols-2 gap-2">
@@ -397,9 +415,21 @@ function CapCalculator({
                 : after < cap.floor
                   ? { text: `below the floor (${fmtM(cap.floor)})`, color: 'var(--color-muted-foreground)' }
                   : { text: `${fmtM(cap.hardCap - after)} of room · under both aprons`, color: 'var(--color-accent)' }
+        const afterCount = nonIr(side.teamId) - side.outN + side.inN
         return (
           <div key={side.label} className="rounded-lg border border-[var(--color-border)] bg-mns-card p-3 text-sm tabular-nums">
             <b className="block truncate">{side.label}</b>
+            <span
+              className={
+                'block text-xs ' +
+                (afterCount > activeSize
+                  ? 'font-bold text-[var(--color-key,#ffb000)]'
+                  : 'text-[var(--color-muted-foreground)]')
+              }
+            >
+              {afterCount}/{activeSize} spots after
+              {afterCount > activeSize ? ' — will need a drop or IR' : ''}
+            </span>
             <span className="block">
               {fmtM(current)} → <b>{fmtM(after)}</b>{' '}
               <span className={delta > 0 ? 'text-[var(--color-key,#ffb000)]' : 'text-[var(--color-accent)]'}>

@@ -133,15 +133,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Pick at least one player to add.' })
       }
       const players = await db
-        .select({ id: mnsPlayers.id, teamId: mnsPlayers.teamId })
+        .select({ id: mnsPlayers.id, teamId: mnsPlayers.teamId, slot: mnsPlayers.slot })
         .from(mnsPlayers)
         .where(eq(mnsPlayers.leagueId, leagueId))
       const byId = new Map(players.map((p) => [p.id, p]))
       const config = league.config as import('../../../src/types/leagueConfig.js').LeagueConfig
       const activeSize = config.roster?.activeSize ?? 10
-      const myCount = players.filter((p) => p.teamId === mine.teamId).length
-      // A drop is only required when the roster is FULL — a straight
-      // drop earlier leaves a hole that gets filled add-only.
+      // IR doesn't occupy a spot — that's what the slots are FOR. A
+      // team over the limit (a 2-for-1 trade) is frozen out of adds
+      // entirely until it gets legal.
+      const myCount = players.filter((p) => p.teamId === mine.teamId && p.slot !== 'ir').length
+      if (myCount > activeSize) {
+        return res.status(400).json({
+          error: `Your roster is over the limit (${myCount} for ${activeSize} spots) — drop or IR someone before adding.`,
+        })
+      }
       if (!dropPlayerId && myCount >= activeSize) {
         return res.status(400).json({ error: 'Your roster is full — pick someone to drop.' })
       }

@@ -277,6 +277,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         })
       }
 
+      // Roster capacity: an asymmetric deal (2-for-1) is legal — the
+      // over team fixes it after — but a team ALREADY over the limit
+      // can't take on even more bodies.
+      const activeSize = config.roster?.activeSize ?? 10
+      const allForCount = await db
+        .select({ teamId: mnsPlayers.teamId, slot: mnsPlayers.slot })
+        .from(mnsPlayers)
+        .where(eq(mnsPlayers.leagueId, leagueId))
+      const nonIr = (teamId: string) =>
+        allForCount.filter((p) => p.teamId === teamId && p.slot !== 'ir').length
+      for (const teamId of involved) {
+        const current = nonIr(teamId)
+        const outN = playerAssets.filter((a) => a.fromTeamId === teamId).length
+        const inN = playerAssets.filter((a) => a.toTeamId === teamId).length
+        if (current > activeSize && inN > outN) {
+          return res.status(400).json({
+            error:
+              'A roster in this deal is already over the limit — it has to get legal (drop or IR someone) before taking on more players.',
+          })
+        }
+      }
+
       // Hard-cap check for both sides, same rule the waiver wire uses.
       if (config.cap?.enabled) {
         const all = await db
@@ -348,7 +370,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ),
         })
       }
-      return res.status(200).json({ ok: true, status: 'executed' })
+      // Who leaves this deal with homework: more bodies than spots.
+      const needsFix = involved
+        .map((teamId) => {
+          const after =
+            nonIr(teamId) -
+            playerAssets.filter((a) => a.fromTeamId === teamId).length +
+            playerAssets.filter((a) => a.toTeamId === teamId).length
+          return { teamId, over: Math.max(0, after - activeSize) }
+        })
+        .filter((t) => t.over > 0)
+      return res.status(200).json({ ok: true, status: 'executed', needsFix })
     }
 
     return res.status(400).json({ error: `Unknown action: ${action}` })
