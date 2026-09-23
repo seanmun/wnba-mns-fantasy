@@ -111,6 +111,10 @@ export const mnsTeams = wnbaSchema.table(
     // no blob store in the stack, and a 4..12-team league's logos fit
     // in the row just fine.
     logo: text('logo'),
+    // The team's strategy dials for the assistant: sliders 0-100 plus
+    // a free-text philosophy. PRIVATE to the team's owners — never in
+    // public team payloads.
+    aiPrefs: jsonb('ai_prefs').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
     telegramUsername: text('telegram_username'),
     capAdjustments: jsonb('cap_adjustments')
       .$type<TeamCapAdjustments>()

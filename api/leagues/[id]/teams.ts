@@ -65,7 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const leagueId = req.query.id as string | undefined
   if (!leagueId) return res.status(400).json({ error: 'Missing league id' })
 
-  if (req.method === 'GET') return handleGet(res, leagueId)
+  if (req.method === 'GET') return handleGet(res, leagueId, userId)
 
   if (req.method === 'POST') {
     if (!(await canManageLeague(userId, leagueId))) {
@@ -116,6 +116,16 @@ async function handlePatch(
         return res.status(400).json({ error: 'Team name must be 1-60 characters.' })
       }
       set.name = name
+    }
+    if (req.body?.aiPrefs !== undefined) {
+      const raw = req.body.aiPrefs as Record<string, unknown>
+      const clean: Record<string, unknown> = {}
+      for (const k of ['timeline', 'spending', 'rosterShape', 'assetTaste', 'risk', 'activity']) {
+        const v = Number(raw?.[k])
+        if (Number.isFinite(v)) clean[k] = Math.max(0, Math.min(100, Math.round(v)))
+      }
+      if (typeof raw?.notes === 'string') clean.notes = raw.notes.slice(0, 600)
+      set.aiPrefs = clean
     }
     if (req.body?.logo !== undefined) {
       const logo = req.body.logo === null ? null : String(req.body.logo)
@@ -231,7 +241,7 @@ async function handlePatch(
   }
 }
 
-async function handleGet(res: VercelResponse, leagueId: string) {
+async function handleGet(res: VercelResponse, leagueId: string, userId: string) {
   try {
     const teamRows = await db
       .select()
@@ -278,11 +288,18 @@ async function handleGet(res: VercelResponse, leagueId: string) {
       }, new Map<string, FuturePick[]>())
     }
 
-    const result = teamRows.map((t) => ({
-      ...mapTeamRow(t),
-      owners: ownersByTeam.get(t.id) ?? [],
-      picks: picksByTeam.get(t.id) ?? [],
-    }))
+    const result = teamRows.map((t) => {
+      const owners = ownersByTeam.get(t.id) ?? []
+      // Strategy is the team's private playbook: only its own owners
+      // see the dials.
+      const mine = owners.some((o) => o.userId === userId)
+      return {
+        ...mapTeamRow(t),
+        owners,
+        picks: picksByTeam.get(t.id) ?? [],
+        ...(mine ? { aiPrefs: (t.aiPrefs ?? {}) as Record<string, unknown> } : {}),
+      }
+    })
 
     return res.status(200).json(result)
   } catch (err) {

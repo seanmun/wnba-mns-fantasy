@@ -20,6 +20,7 @@ interface TeamInfo {
   id: string
   name: string
   logo?: string | null
+  aiPrefs?: Record<string, unknown>
   owners: OwnerInfo[]
   picks?: Array<{
     id: string
@@ -725,6 +726,8 @@ function TeamSettings({
   const myOwnerRow = team.owners.find((o) => o.userId != null && o.userId === user?.id)
   const [prefs, setPrefs] = useState<Record<string, boolean>>(myOwnerRow?.emailPrefs ?? {})
   const [name, setName] = useState(team.name)
+  const [ai, setAi] = useState<Record<string, unknown>>(team.aiPrefs ?? {})
+  const [aiDirty, setAiDirty] = useState(false)
   const [logo, setLogo] = useState<string | null | undefined>(undefined) // undefined = unchanged
   const [coOwner, setCoOwner] = useState('')
   const [saving, setSaving] = useState(false)
@@ -835,6 +838,75 @@ function TeamSettings({
           ) : team.logo ? (
             <Button variant="quiet" onClick={() => save({ logo: null }, 'Logo removed')} disabled={saving}>
               Remove
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      <div>
+        <span className="block text-xs font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-1.5">
+          Bump's read on this team
+        </span>
+        <p className="text-xs text-[var(--color-muted-foreground)] mb-2">
+          Set the dials and Bump tailors every suggestion — trades, pickups, keepers — to how YOU
+          run this team. Private to your team; other owners get their own advice.
+        </p>
+        <div className="flex flex-col gap-3">
+          {(
+            [
+              ['timeline', 'Rebuilding', 'Win now'],
+              ['spending', 'Cap-frugal', 'Spend to the apron'],
+              ['rosterShape', 'Balanced', 'Specialists (punt)'],
+              ['assetTaste', 'Picks & prospects', 'Proven veterans'],
+              ['risk', 'Safe floors', 'Upside swings'],
+              ['activity', 'Set & forget', 'Daily grinder'],
+            ] as const
+          ).map(([k, left, right]) => (
+            <label key={k} className="block">
+              <span className="flex justify-between text-xs text-[var(--color-muted-foreground)] mb-0.5">
+                <span>{left}</span>
+                <span>{right}</span>
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={Number(ai[k] ?? 50)}
+                onChange={(e) => {
+                  setAi((a) => ({ ...a, [k]: Number(e.target.value) }))
+                  setAiDirty(true)
+                }}
+                className="w-full accent-[var(--color-accent)]"
+                aria-label={`${left} to ${right}`}
+              />
+            </label>
+          ))}
+          <label className="block">
+            <span className="block text-xs text-[var(--color-muted-foreground)] mb-1">
+              Your philosophy, in your words — this outranks the dials
+            </span>
+            <textarea
+              value={String(ai.notes ?? '')}
+              maxLength={600}
+              rows={3}
+              placeholder={'e.g. "Never trade my 2027 firsts. I punt FT%. Prefer two-way wings."'}
+              onChange={(e) => {
+                setAi((a) => ({ ...a, notes: e.target.value }))
+                setAiDirty(true)
+              }}
+              className="w-full px-3 py-2 rounded-lg bg-[var(--color-background)] border border-[var(--color-border-interactive)] text-[var(--color-foreground)] placeholder:text-[var(--color-muted-foreground)] focus:outline-none focus:border-[var(--color-accent)]"
+            />
+          </label>
+          {aiDirty ? (
+            <Button
+              onClick={() => {
+                setAiDirty(false)
+                void save({ aiPrefs: ai }, "Saved — Bump's advice follows your dials now")
+              }}
+              disabled={saving}
+            >
+              Save strategy
             </Button>
           ) : null}
         </div>

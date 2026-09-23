@@ -8,6 +8,7 @@ export interface Team {
   name: string
   abbrev: string
   logo: string | null
+  aiPrefs?: Record<string, unknown>
   telegramUsername: string | null
   capAdjustments: TeamCapAdjustments
   banners: number[]
