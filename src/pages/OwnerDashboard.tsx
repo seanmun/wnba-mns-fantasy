@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react'
+import React, { Fragment, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
 import { toast } from 'sonner'
@@ -73,6 +73,16 @@ interface DayLine {
   blk: number
   fgm: number
   fga: number
+}
+interface FeeLine {
+  label: string
+  amount: number
+  note: string | null
+}
+interface FeesPayload {
+  roster: { used: number; size: number; redshirts: number; intStash: number; ir: number }
+  lines: FeeLine[]
+  total: number
 }
 interface PendingClaim {
   id: string
@@ -223,6 +233,8 @@ export function OwnerDashboard() {
   const [sortBy, setSortBy] = useState<'gp' | 'ppg' | 'rpg' | 'apg' | 'spg' | 'bpg' | 'tpg' | 'fgPct' | 'cat' | 'catD' | 'salary'>('ppg')
   const [asc, setAsc] = useState(false)
   const [cardId, setCardId] = useState<string | null>(null)
+  const [fees, setFees] = useState<FeesPayload | null>(null)
+  const [pane, setPane] = useState(0)
 
   const load = () => {
     Promise.all([
@@ -252,6 +264,13 @@ export function OwnerDashboard() {
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(loadDay, [apiFetch, leagueId, team?.id, selDate])
+
+  useEffect(() => {
+    if (!team?.id) return
+    apiFetch<FeesPayload>(`/api/leagues/${leagueId}/fees?teamId=${team.id}`)
+      .then(setFees)
+      .catch(() => setFees(null))
+  }, [apiFetch, leagueId, team?.id, players])
 
   // Your pending waiver claim belongs on your team page too — the
   // move already in flight is part of the roster's truth.
@@ -422,7 +441,10 @@ export function OwnerDashboard() {
         <TeamSettings leagueId={leagueId} team={team} onSaved={() => { setShowSettings(false); load() }} />
       ) : null}
       {currentLeague?.config.cap?.enabled ? (
-        <CapCard capUsed={capUsed} cap={currentLeague.config.cap} fees={currentLeague.config.fees} />
+        <CardCarousel pane={pane} onPane={setPane}>
+          <CapCard capUsed={capUsed} cap={currentLeague.config.cap} fees={currentLeague.config.fees} />
+          <FeesCard fees={fees} />
+        </CardCarousel>
       ) : null}
 
       {(() => {
@@ -1072,6 +1094,128 @@ function TeamSettings({
           They get an email; signing in with that address links them to this team.
         </p>
       </div>
+    </div>
+  )
+}
+
+// Two cards, one space: the cap picture by default, the league's fee
+// sheet a swipe away — the legacy app's carousel. Scroll-snap does the
+// swiping natively, and the dots double as buttons for anyone on a
+// mouse or a keyboard.
+function CardCarousel({
+  pane,
+  onPane,
+  children,
+}: {
+  pane: number
+  onPane: (i: number) => void
+  children: React.ReactNode[]
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const panes = React.Children.toArray(children)
+
+  const go = (i: number) => {
+    onPane(i)
+    const el = ref.current
+    if (el) el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' })
+  }
+
+  return (
+    <div className="mb-6">
+      <div
+        ref={ref}
+        onScroll={(e) => {
+          const el = e.currentTarget
+          const i = Math.round(el.scrollLeft / Math.max(1, el.clientWidth))
+          if (i !== pane) onPane(i)
+        }}
+        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-none"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        {panes.map((child, i) => (
+          <div key={i} className="min-w-full snap-center">
+            {child}
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-center gap-2 -mt-2">
+        {panes.map((_, i) => (
+          <button
+            key={i}
+            onClick={() => go(i)}
+            aria-label={i === 0 ? 'Salary cap' : 'Roster and fees'}
+            aria-current={pane === i}
+            className="p-2"
+          >
+            <span
+              className="block w-2 h-2 rounded-full"
+              style={{
+                background:
+                  pane === i ? 'var(--color-accent)' : 'var(--color-border-interactive)',
+              }}
+            />
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Roster summary and fees due — tracked, never handled.
+function FeesCard({ fees }: { fees: FeesPayload | null }) {
+  const usd = (n: number) => `$${n.toLocaleString('en-US')}`
+  return (
+    <div className="rounded-lg border border-[var(--color-border)] bg-mns-card p-4">
+      <span className="block text-sm font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-3">
+        Roster &amp; fees
+      </span>
+      {!fees ? (
+        <Skeleton h="6rem" />
+      ) : (
+        <>
+          <div className="grid grid-cols-4 gap-2 mb-3 text-center tabular-nums">
+            {(
+              [
+                ['Roster', `${fees.roster.used} / ${fees.roster.size}`],
+                ['Redshirts', String(fees.roster.redshirts)],
+                ['Int stash', String(fees.roster.intStash)],
+                ['IR', String(fees.roster.ir)],
+              ] as const
+            ).map(([label, value]) => (
+              <span key={label}>
+                <b className="block text-lg leading-tight">{value}</b>
+                <span className="block text-[0.68rem] uppercase tracking-wider text-[var(--color-muted-foreground)]">
+                  {label}
+                </span>
+              </span>
+            ))}
+          </div>
+          {fees.lines.length === 0 ? (
+            <p className="text-sm text-[var(--color-muted-foreground)]">Nothing due yet.</p>
+          ) : (
+            <ul className="flex flex-col gap-1 text-sm tabular-nums">
+              {fees.lines.map((l) => (
+                <li key={l.label} className="flex items-baseline justify-between gap-3">
+                  <span>
+                    {l.label}
+                    {l.note ? (
+                      <span className="text-[var(--color-muted-foreground)]"> ({l.note})</span>
+                    ) : null}
+                  </span>
+                  <span>{usd(l.amount)}</span>
+                </li>
+              ))}
+              <li className="flex items-baseline justify-between gap-3 border-t border-[var(--color-border)] mt-1 pt-1">
+                <b>Total fees</b>
+                <b>{usd(fees.total)}</b>
+              </li>
+            </ul>
+          )}
+          <p className="mt-2 text-[0.68rem] text-[var(--color-muted-foreground)]">
+            The commissioner collects — this page keeps the tally.
+          </p>
+        </>
+      )}
     </div>
   )
 }
