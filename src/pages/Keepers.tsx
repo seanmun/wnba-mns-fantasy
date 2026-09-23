@@ -5,6 +5,7 @@ import { Star } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
 import { Button, EmptyState, ListRow, PageHeader, Skeleton } from '../ui/components'
 import { PlayerName } from '../components/InjuryTag'
+import { COUNTS_AGAINST_CAP } from '../lib/season/roster'
 
 interface KeeperPlayer {
   id: string
@@ -12,6 +13,7 @@ interface KeeperPlayer {
   position: string | null
   teamCode: string | null
   salary: number | null
+  slot?: string | null
   isKeeper: boolean
   injuryStatus?: string | null
 }
@@ -63,10 +65,16 @@ export function Keepers() {
   }
 
   const inPhase = data.phase === 'keeper_season'
+  // A parked player carries no cap this season, but she starts the new
+  // year active — so a kept redshirt or stash DOES cost cap space next
+  // year, and the preview says so rather than flattering the number.
   const keeperSalary = picked.reduce(
     (n, id) => n + (data.myRoster.find((p) => p.id === id)?.salary ?? 0),
     0
   )
+  const parkedKept = picked.filter(
+    (id) => !COUNTS_AGAINST_CAP(data.myRoster.find((p) => p.id === id)?.slot)
+  ).length
   const dirty =
     JSON.stringify([...picked].sort()) !==
     JSON.stringify(data.myRoster.filter((p) => p.isKeeper).map((p) => p.id).sort())
@@ -151,9 +159,19 @@ export function Keepers() {
                   <ListRow
                     mine={kept}
                     title={<PlayerName name={p.name} injuryStatus={p.injuryStatus} />}
-                    sub={[p.position, p.teamCode, p.salary != null ? fmtM(p.salary) : null]
-                      .filter(Boolean)
-                      .join(' · ')}
+                    sub={
+                      <>
+                        {[p.position, p.teamCode, p.salary != null ? fmtM(p.salary) : null]
+                          .filter(Boolean)
+                          .join(' · ')}
+                        {p.slot === 'redshirt' || p.slot === 'international' ? (
+                          <span className="ml-1.5 text-[var(--color-key,#ffb000)]">
+                            {p.slot === 'redshirt' ? 'redshirted' : 'stashed abroad'} — active again
+                            next season
+                          </span>
+                        ) : null}
+                      </>
+                    }
                     end={
                       inPhase ? (
                         <button
@@ -178,6 +196,15 @@ export function Keepers() {
               )
             })}
           </ul>
+
+          {parkedKept > 0 ? (
+            <p className="mb-3 text-sm text-[var(--color-muted-foreground)]">
+              {parkedKept === 1 ? 'One keeper is' : `${parkedKept} keepers are`} parked on redshirt
+              or stash. Those slots end with the season — they come back active next year, and
+              their salary counts against next year&rsquo;s cap, which the number above already
+              includes.
+            </p>
+          ) : null}
 
           {inPhase ? (
             <Button full onClick={save} disabled={busy || !dirty}>

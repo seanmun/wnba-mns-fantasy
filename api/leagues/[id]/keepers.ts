@@ -52,6 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           position: p.position,
           teamCode: p.teamCode,
           salary: p.salary,
+          slot: p.slot,
           isKeeper: p.isKeeper,
           injuryStatus: p.injuryStatus,
         }))
@@ -87,7 +88,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       const released = await db
         .update(mnsPlayers)
-        .set({ teamId: null, slot: 'active', onIR: false })
+        .set({
+          teamId: null,
+          slot: 'active',
+          onIR: false,
+          isInternationalStash: false,
+          redshirtedAt: null,
+        })
         .where(
           and(
             eq(mnsPlayers.leagueId, leagueId),
@@ -97,10 +104,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         )
         .returning({ id: mnsPlayers.id })
       // The flag is consumed — kept players are simply "rostered" now.
+      // Parked slots end with the season too: a kept redshirt or stash
+      // starts the new year active, and next year's eligibility is
+      // re-derived from fresh years-pro and presence data.
       await db
         .update(mnsPlayers)
         .set({ isKeeper: false })
         .where(eq(mnsPlayers.leagueId, leagueId))
+      await db
+        .update(mnsPlayers)
+        .set({ slot: 'active', onIR: false, isInternationalStash: false, redshirtedAt: null })
+        .where(
+          and(
+            eq(mnsPlayers.leagueId, leagueId),
+            inArray(mnsPlayers.slot, ['redshirt', 'international'])
+          )
+        )
       await db
         .update(mnsLeagues)
         .set({ leaguePhase: 'draft', updatedAt: new Date() })

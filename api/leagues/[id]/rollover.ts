@@ -2,7 +2,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { and, eq } from 'drizzle-orm'
 import { verifyAuth, canManageLeague } from '../../_middleware.js'
 import { db } from '../../_db.js'
-import { mnsLeagues, mnsWaiverClaims } from '../../../src/lib/db/schema.js'
+import { inArray } from 'drizzle-orm'
+import { mnsLeagues, mnsPlayers, mnsWaiverClaims } from '../../../src/lib/db/schema.js'
 import { logger } from '../../_logger.js'
 import type { LeagueConfig } from '../../../src/types/leagueConfig.js'
 
@@ -67,6 +68,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updatedAt: new Date(),
       })
       .where(eq(mnsLeagues.id, leagueId))
+
+    // Redshirts and stashes are single-season parks: the new year
+    // starts everyone active, and eligibility is re-derived from the
+    // fresh years-pro and presence the bios pass reads.
+    await db
+      .update(mnsPlayers)
+      .set({ slot: 'active', onIR: false, isInternationalStash: false, redshirtedAt: null })
+      .where(
+        and(
+          eq(mnsPlayers.leagueId, leagueId),
+          inArray(mnsPlayers.slot, ['redshirt', 'international'])
+        )
+      )
 
     // A queue aimed at last season means nothing now.
     await db
