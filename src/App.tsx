@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation, useParams } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { ScrollToTop } from './components/ScrollToTop'
 import { UserSync } from './components/UserSync'
@@ -87,11 +87,13 @@ function LoadingFallback() {
 }
 
 function AppLayout({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation()
   return (
     <div className="flex flex-col min-h-screen">
       <Header />
       <main className="flex-1">
-        <ErrorBoundary>{children}</ErrorBoundary>
+        {/* Keyed by route: one page's crash must not poison the others. */}
+        <ErrorBoundary resetKey={pathname}>{children}</ErrorBoundary>
       </main>
       <Footer />
     </div>
@@ -104,6 +106,7 @@ function LeagueLayout({ children }: { children: React.ReactNode }) {
   // multi-league commissioner could land on /lm pages and silently edit
   // whichever league was persisted last.
   const { leagueId } = useParams()
+  const { pathname } = useLocation()
   const { currentLeagueId, setCurrentLeagueId } = useLeague()
   useEffect(() => {
     if (leagueId && leagueId !== currentLeagueId) setCurrentLeagueId(leagueId)
@@ -115,7 +118,8 @@ function LeagueLayout({ children }: { children: React.ReactNode }) {
       <LeagueTopNav />
       {/* pb clears the always-visible bottom tab bar */}
       <main className="flex-1 pb-16">
-        <ErrorBoundary>{children}</ErrorBoundary>
+        {/* Keyed by route: one page's crash must not poison the others. */}
+        <ErrorBoundary resetKey={pathname}>{children}</ErrorBoundary>
       </main>
       <Footer />
       <LeagueBottomNav />

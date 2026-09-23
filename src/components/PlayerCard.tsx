@@ -7,7 +7,9 @@ import { useLeague } from '../contexts/LeagueContext'
 import { Button } from '../ui/components'
 import { Sheet, Chip, Skeleton } from '../ui/components'
 import { PlayerName } from './InjuryTag'
-import { RANGE_LABELS, type StatAvg } from './StatTable'
+import { RANGE_LABELS, isFreshNews, type StatAvg } from '../lib/playerView'
+
+export { isFreshNews }
 
 // The player card: who they are, what they've done, and the news —
 // one tap from any roster row. Details and the game log come from the
@@ -44,9 +46,6 @@ interface LogLine {
   tov: number
 }
 
-// "New news" = the report changed inside the last 48 hours.
-export const isFreshNews = (updatedAt?: string | null, status?: string | null) =>
-  !!status && !!updatedAt && Date.now() - new Date(updatedAt).getTime() < 48 * 3600 * 1000
 
 const fmtSalary = (n: number | null) =>
   n != null ? (n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : `$${(n / 1000).toFixed(0)}k`) : null

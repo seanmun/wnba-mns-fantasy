@@ -1,24 +1,15 @@
 import { useState, type ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { PlayerName } from './InjuryTag'
-import { isFreshNews } from './PlayerCard'
+import { isFreshNews, RANGE_LABELS, type RangeKey, type StatAvg } from '../lib/playerView'
+
+export { RANGE_LABELS }
+export type { RangeKey, StatAvg }
 
 // The research table both roster surfaces share: sortable columns,
 // range-filtered averages, the player column pinned while the numbers
 // scroll. Tapping a header sorts descending, tapping again flips.
 
-export interface StatAvg {
-  gp: number
-  ppg: number
-  rpg: number
-  apg: number
-  spg: number
-  bpg: number
-  tpg: number
-  fgPct: number
-  cat?: number | null
-  catD?: number | null
-}
 export interface StatRowPlayer {
   id: string
   name: string
@@ -29,13 +20,6 @@ export interface StatRowPlayer {
   injuryUpdatedAt?: string | null
 }
 
-export type RangeKey = 'season' | 'last30' | 'last10' | 'lastSeason'
-export const RANGE_LABELS: Array<[RangeKey, string]> = [
-  ['season', 'Season'],
-  ['last30', 'Last 30'],
-  ['last10', 'Last 10'],
-  ['lastSeason', 'Last season'],
-]
 
 export function RangeChips({
   value,
