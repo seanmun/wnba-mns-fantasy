@@ -102,6 +102,21 @@ export function LeagueHome() {
 
       {/* This week's matchups — the season's front door, mine first
           and loudest */}
+      {leaguePhase === 'keeper_season' ? (
+        <Link
+          to={`/league/${league.id}/keepers`}
+          className="mb-6 flex items-center justify-between bg-mns-card hover:bg-mns-hover border border-[var(--color-key,#ffb000)]/40 rounded-lg px-4 py-3"
+        >
+          <span>
+            <b style={{ color: 'var(--color-key, #ffb000)' }}>Keeper season is open</b>
+            <span className="block text-sm text-gray-400">
+              Declare who you carry into next year — everyone else hits the draft pool.
+            </span>
+          </span>
+          <span className="text-xl" style={{ color: 'var(--color-key, #ffb000)' }}>→</span>
+        </Link>
+      ) : null}
+
       {leaguePhase === 'regular_season' || leaguePhase === 'playoffs' ? (
         <>
           <PrizesTeaser leagueId={league.id} />

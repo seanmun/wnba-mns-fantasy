@@ -176,6 +176,9 @@ export const mnsPlayers = wnbaSchema.table(
     onIR: boolean('on_ir').notNull().default(false),
     // ESPN's injury report, refreshed each tick: status ('Out',
     // 'Day-To-Day', ...) and the one-line note. Null = no report.
+    // Declared for next season during keeper_season; consumed when the
+    // commissioner locks keepers and releases everyone else.
+    isKeeper: boolean('is_keeper').notNull().default(false),
     injuryStatus: text('injury_status'),
     injuryNote: text('injury_note'),
     // Stamped when the report CHANGES for this player — "new news"
