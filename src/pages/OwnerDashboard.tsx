@@ -359,14 +359,6 @@ export function OwnerDashboard() {
   // the league pool.
   const salaryCeil = Math.max(1, ...players.map((p) => p.salary ?? 0))
 
-  // Which named slot each active player is filling today, and what the
-  // lineup still has open — the same matching the server enforces.
-  const shape = currentLeague?.config.roster?.positionSlots ?? []
-  const lineupFit = assignSlots(
-    roster.filter((p) => slotOf(p) === 'active').map((p) => ({ id: p.id, position: p.position })),
-    shape
-  )
-
   const today = etToday()
   const minDate = currentLeague?.config.season?.startDate ?? shiftDate(today, -7)
   const maxDate = shiftDate(today, 13)
@@ -378,6 +370,16 @@ export function OwnerDashboard() {
   // the base slot until then.
   const slotOf = (p: RosterPlayer) => day?.slots[p.id] ?? p.slot ?? 'active'
   const bySlot = (s: string) => roster.filter((p) => slotOf(p) === s)
+
+  // Which named slot each active player is filling today, and what the
+  // lineup still has open — the same matching the server enforces.
+  // Declared AFTER slotOf: it calls it immediately, so it cannot sit
+  // above the definition.
+  const shape = currentLeague?.config.roster?.positionSlots ?? []
+  const lineupFit = assignSlots(
+    bySlot('active').map((p) => ({ id: p.id, position: p.position })),
+    shape
+  )
 
   const gameNote = (p: RosterPlayer) => {
     if (!day) return null
