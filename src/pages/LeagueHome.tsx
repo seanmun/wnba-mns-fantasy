@@ -102,6 +102,21 @@ export function LeagueHome() {
 
       {/* This week's matchups — the season's front door, mine first
           and loudest */}
+      {leaguePhase === 'rookie_draft' ? (
+        <Link
+          to={`/league/${league.id}/rookie-draft`}
+          className="mb-6 flex items-center justify-between bg-mns-card hover:bg-mns-hover border border-[var(--color-accent)]/40 rounded-lg px-4 py-3"
+        >
+          <span>
+            <b className="text-[var(--color-accent)]">The rookie draft is on</b>
+            <span className="block text-sm text-gray-400">
+              Worst record picks first — traded picks belong to whoever holds them.
+            </span>
+          </span>
+          <span className="text-[var(--color-accent)] text-xl">→</span>
+        </Link>
+      ) : null}
+
       {leaguePhase === 'keeper_season' ? (
         <Link
           to={`/league/${league.id}/keepers`}
