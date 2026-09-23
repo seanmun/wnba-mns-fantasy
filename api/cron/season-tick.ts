@@ -3,7 +3,8 @@ import { inArray } from 'drizzle-orm'
 import { db } from '../_db.js'
 import { mnsLeagues } from '../../src/lib/db/schema.js'
 import { logger } from '../_logger.js'
-import { ingestEspnDay, ingestInjuries, ingestSimDay } from '../../src/lib/season/statSources.js'
+import { ingestBios, ingestEspnDay, ingestInjuries, ingestSimDay } from '../../src/lib/season/statSources.js'
+import { mnsNotifyLog } from '../../src/lib/db/schema.js'
 import { easternToday, matchupWeekFor, scoreLeagueWeek } from '../../src/lib/season/score.js'
 import { processWaivers } from '../../src/lib/season/waivers.js'
 import { applyLineupsForToday } from '../../src/lib/season/lineups.js'
@@ -93,6 +94,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // The injury report, full-refresh (sim leagues skip it — their
       // players never really get hurt).
       const injuries = source === 'espn' ? await ingestInjuries(db, league.id) : { updated: 0 }
+
+      // Bios refresh weekly — the notify_log key makes one tick a week
+      // do the work.
+      if (source === 'espn') {
+        const week = `${today.slice(0, 4)}-w${Math.ceil(
+          (Date.parse(today) - Date.parse(`${today.slice(0, 4)}-01-01`)) / (7 * 86400000)
+        )}`
+        const claimed = await db
+          .insert(mnsNotifyLog)
+          .values({ leagueId: league.id, kind: 'bios', dateKey: week })
+          .onConflictDoNothing()
+          .returning()
+        if (claimed.length > 0) await ingestBios(db, league.id)
+      }
 
       // Phase transitions: regular season → playoffs once everything
       // is banked; round → round → champion as playoff weeks final.

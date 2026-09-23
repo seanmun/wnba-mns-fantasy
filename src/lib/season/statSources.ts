@@ -199,6 +199,45 @@ export async function dayGames(date: string): Promise<Map<string, DayGame>> {
 // ESPN's league-wide injury report → players.injuryStatus/Note.
 // Full refresh each pass: players missing from the report are CLEARED
 // (healthy again), matched by normalized name like the stat ingest.
+// Player bios from ESPN team rosters — age today, more later. Weekly
+// cadence is plenty; matched by normalized name like everything else.
+export async function ingestBios(
+  db: Db,
+  leagueId: string
+): Promise<{ updated: number }> {
+  const teams = (await (await fetch(`${ESPN}/teams`)).json()) as {
+    sports?: Array<{ leagues?: Array<{ teams?: Array<{ team: { id: string } }> }> }>
+  }
+  const ids = (teams.sports?.[0]?.leagues?.[0]?.teams ?? []).map((t) => t.team.id)
+  const ageByName = new Map<string, number>()
+  for (const id of ids) {
+    try {
+      const roster = (await (await fetch(`${ESPN}/teams/${id}/roster`)).json()) as {
+        athletes?: Array<{ displayName?: string; fullName?: string; age?: number }>
+      }
+      for (const a of roster.athletes ?? []) {
+        const name = a.displayName ?? a.fullName
+        if (name && a.age) ageByName.set(normName(name), a.age)
+      }
+    } catch {
+      /* one team down never sinks the pass */
+    }
+  }
+  const pool = (await db
+    .select({ id: mnsPlayers.id, name: mnsPlayers.name, age: mnsPlayers.age })
+    .from(mnsPlayers)
+    .where(eq(mnsPlayers.leagueId, leagueId))) as Array<{ id: string; name: string; age: number | null }>
+  let updated = 0
+  for (const p of pool) {
+    const age = ageByName.get(normName(p.name))
+    if (age != null && age !== p.age) {
+      await db.update(mnsPlayers).set({ age }).where(eq(mnsPlayers.id, p.id))
+      updated++
+    }
+  }
+  return { updated }
+}
+
 export async function ingestInjuries(
   db: Db,
   leagueId: string

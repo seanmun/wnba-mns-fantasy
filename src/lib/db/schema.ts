@@ -179,6 +179,9 @@ export const mnsPlayers = wnbaSchema.table(
     // Declared for next season during keeper_season; consumed when the
     // commissioner locks keepers and releases everyone else.
     isKeeper: boolean('is_keeper').notNull().default(false),
+    // From ESPN team rosters, refreshed weekly — the veteran-vs-youth
+    // signal the assistant reasons with.
+    age: integer('age'),
     injuryStatus: text('injury_status'),
     injuryNote: text('injury_note'),
     // Stamped when the report CHANGES for this player — "new news"

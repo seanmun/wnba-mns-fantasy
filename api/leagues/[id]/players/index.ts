@@ -21,6 +21,7 @@ function mapPlayerRow(row: typeof mnsPlayers.$inferSelect): Player {
     sport: row.sport as Sport,
     slot: row.slot as PlayerSlot,
     onIR: row.onIR,
+    age: row.age,
     injuryStatus: row.injuryStatus,
     injuryNote: row.injuryNote,
     injuryUpdatedAt: row.injuryUpdatedAt ? row.injuryUpdatedAt.toISOString() : null,

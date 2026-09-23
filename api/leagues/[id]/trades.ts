@@ -94,6 +94,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const action = String(req.body?.action ?? '')
 
+    // Dry-run the math the accept path enforces — the assistant's
+    // calculator, and never a write.
+    if (action === 'evaluate') {
+      const toTeamId = String(req.body?.toTeamId ?? '')
+      const givePlayerIds = (req.body?.givePlayerIds ?? []) as string[]
+      const getPlayerIds = (req.body?.getPlayerIds ?? []) as string[]
+      if (!toTeamId) return res.status(400).json({ error: 'toTeamId required.' })
+      const all = await db.select().from(mnsPlayers).where(eq(mnsPlayers.leagueId, leagueId))
+      const byId = new Map(all.map((p) => [p.id, p]))
+      const { averagesForRanges } = await import('../../../src/lib/season/stats.js')
+      const season = (await averagesForRanges(db, leagueId)).season
+      const sumCat = (ids: string[], k: 'ppg' | 'rpg' | 'apg' | 'spg' | 'bpg' | 'tpg') =>
+        ids.reduce((n, id) => n + (season[id]?.[k] ?? 0), 0)
+      const swing = {
+        pts: sumCat(getPlayerIds, 'ppg') - sumCat(givePlayerIds, 'ppg'),
+        reb: sumCat(getPlayerIds, 'rpg') - sumCat(givePlayerIds, 'rpg'),
+        ast: sumCat(getPlayerIds, 'apg') - sumCat(givePlayerIds, 'apg'),
+        stl: sumCat(getPlayerIds, 'spg') - sumCat(givePlayerIds, 'spg'),
+        blk: sumCat(getPlayerIds, 'bpg') - sumCat(givePlayerIds, 'bpg'),
+        tpm: sumCat(getPlayerIds, 'tpg') - sumCat(givePlayerIds, 'tpg'),
+        cat:
+          getPlayerIds.reduce((n, id) => n + (season[id]?.cat ?? 0), 0) -
+          givePlayerIds.reduce((n, id) => n + (season[id]?.cat ?? 0), 0),
+      }
+      const activeSize = config.roster?.activeSize ?? 10
+      const sideView = (teamId: string, outIds: string[], inIds: string[]) => {
+        const roster = all.filter((p) => p.teamId === teamId)
+        const salary = roster.reduce((n, p) => n + (p.salary ?? 0), 0)
+        const outSal = outIds.reduce((n, id) => n + (byId.get(id)?.salary ?? 0), 0)
+        const inSal = inIds.reduce((n, id) => n + (byId.get(id)?.salary ?? 0), 0)
+        const nonIr = roster.filter((p) => p.slot !== 'ir').length
+        return {
+          teamId,
+          salaryBefore: salary,
+          salaryAfter: salary - outSal + inSal,
+          overHardCap: config.cap?.enabled ? salary - outSal + inSal > config.cap.hardCap : false,
+          rosterAfter: nonIr - outIds.length + inIds.length,
+          overRosterLimit: nonIr - outIds.length + inIds.length > activeSize,
+        }
+      }
+      return res.status(200).json({
+        // Swing is from the CALLER's side: incoming minus outgoing.
+        categorySwingPerGame: swing,
+        me: sideView(mine.teamId, givePlayerIds, getPlayerIds),
+        them: sideView(toTeamId, getPlayerIds, givePlayerIds),
+      })
+    }
+
     if (action === 'propose') {
       const toTeamId = String(req.body?.toTeamId ?? '')
       const givePlayerIds = (req.body?.givePlayerIds ?? []) as string[]
