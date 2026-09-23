@@ -1122,23 +1122,48 @@ function CardCarousel({
     if (el) el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' })
   }
 
+  const arrow = (dir: -1 | 1) => {
+    const target = pane + dir
+    const disabled = target < 0 || target >= panes.length
+    return (
+      <button
+        onClick={() => go(target)}
+        disabled={disabled}
+        aria-label={dir < 0 ? 'Previous card' : 'Next card'}
+        // Phones swipe; desktops get the arrows they expect, parked
+        // outside the card so nothing covers its numbers.
+        className="hidden sm:inline-flex shrink-0 items-center justify-center w-9 h-9 rounded-full border border-[var(--color-border-interactive)] text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)] hover:border-[var(--color-accent)] disabled:opacity-25 disabled:hover:border-[var(--color-border-interactive)] disabled:hover:text-[var(--color-muted-foreground)] transition-colors"
+      >
+        {dir < 0 ? (
+          <ChevronLeft aria-hidden className="w-5 h-5" />
+        ) : (
+          <ChevronRight aria-hidden className="w-5 h-5" />
+        )}
+      </button>
+    )
+  }
+
   return (
     <div className="mb-6">
-      <div
-        ref={ref}
-        onScroll={(e) => {
-          const el = e.currentTarget
-          const i = Math.round(el.scrollLeft / Math.max(1, el.clientWidth))
-          if (i !== pane) onPane(i)
-        }}
-        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-none"
-        style={{ scrollbarWidth: 'none' }}
-      >
-        {panes.map((child, i) => (
-          <div key={i} className="min-w-full snap-center">
-            {child}
-          </div>
-        ))}
+      <div className="flex items-center gap-2">
+        {arrow(-1)}
+        <div
+          ref={ref}
+          onScroll={(e) => {
+            const el = e.currentTarget
+            const i = Math.round(el.scrollLeft / Math.max(1, el.clientWidth))
+            if (i !== pane) onPane(i)
+          }}
+          className="flex-1 min-w-0 flex overflow-x-auto snap-x snap-mandatory scrollbar-none"
+          style={{ scrollbarWidth: 'none' }}
+        >
+          {panes.map((child, i) => (
+            <div key={i} className="min-w-full snap-center">
+              {child}
+            </div>
+          ))}
+        </div>
+        {arrow(1)}
       </div>
       <div className="flex justify-center gap-2 -mt-2">
         {panes.map((_, i) => (
