@@ -55,6 +55,14 @@ export function LeagueHome() {
         </div>
         <div className="text-sm text-gray-400 mb-2">
           {league.sport.toUpperCase()} · {league.seasonYear}
+          {userLeagues.length > 1 ? (
+            <>
+              {' · '}
+              <Link to="/teams" className="text-green-400 hover:text-green-300 font-semibold">
+                Switch league ⇄
+              </Link>
+            </>
+          ) : null}
         </div>
         {/* Phase chain, legacy-mns style: where the league is in its
             year, at a glance. */}
