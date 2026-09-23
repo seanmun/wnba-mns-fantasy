@@ -1,26 +1,48 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
 import { toast } from 'sonner'
+import { Plus, Search, X } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
 import { useLeague } from '../contexts/LeagueContext'
+import { Button, EmptyState, Skeleton } from '../ui/components'
+import { PlayerName } from '../components/InjuryTag'
+import { COUNTS_AGAINST_CAP, HOLDS_ROSTER_SPOT } from '../lib/season/roster'
+import type { StatAvg } from '../lib/playerView'
 import type { Player, PlayerSlot } from '../types/player'
 import type { Team } from '../types/team'
 
-type Filter = 'all' | 'unassigned' | 'assigned'
+// Building a league's rosters by hand — the migration tool. It used to
+// be one table of every player with a team dropdown on each row: to
+// fill four rosters you scrolled three hundred rows and worked forty
+// dropdowns. This is the draft board instead: pick a team once, then
+// type-and-Enter your way through the pool. The team you're filling is
+// always on screen with its cap and its count, so you can see the
+// roster take shape.
+
+const M = 1_000_000
+const fmtM = (n: number) => (n >= M ? `$${(n / M).toFixed(2)}M` : `$${(n / 1000).toFixed(0)}k`)
+
+const SLOTS: Array<{ value: PlayerSlot; label: string }> = [
+  { value: 'active', label: 'Active' },
+  { value: 'bench', label: 'Bench' },
+  { value: 'ir', label: 'IR' },
+  { value: 'redshirt', label: 'Redshirt' },
+  { value: 'international', label: 'Intl' },
+]
 
 export function AdminRosterManager() {
   const { user } = useUser()
   const { currentLeague, loading: leagueLoading } = useLeague()
   const { apiFetch } = useApi()
 
-  const [players, setPlayers] = useState<Player[]>([])
+  const [players, setPlayers] = useState<Player[] | null>(null)
   const [teams, setTeams] = useState<Team[]>([])
-  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState<Record<string, StatAvg>>({})
   const [error, setError] = useState<string | null>(null)
+  const [activeTeam, setActiveTeam] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<Filter>('all')
-  const [teamFilter, setTeamFilter] = useState<string>('all')
+  const searchRef = useRef<HTMLInputElement>(null)
 
   const leagueId = currentLeague?.id
   const isCommissioner =
@@ -29,322 +51,303 @@ export function AdminRosterManager() {
   useEffect(() => {
     if (!leagueId) return
     let cancelled = false
-    const load = async () => {
-      try {
-        setLoading(true)
-        const [p, t] = await Promise.all([
-          apiFetch<Player[]>(`/api/leagues/${leagueId}/players`),
-          apiFetch<Team[]>(`/api/leagues/${leagueId}/teams`),
-        ])
+    Promise.all([
+      apiFetch<Player[]>(`/api/leagues/${leagueId}/players`),
+      apiFetch<Team[]>(`/api/leagues/${leagueId}/teams`),
+    ])
+      .then(([p, t]) => {
         if (cancelled) return
         setPlayers(p)
         setTeams(t)
-        setError(null)
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    void load()
+        setActiveTeam((cur) => cur ?? t[0]?.id ?? null)
+      })
+      .catch((e: Error) => !cancelled && setError(e.message))
+    apiFetch<{ season: Record<string, StatAvg> }>(`/api/leagues/${leagueId}/stats`)
+      .then((r) => !cancelled && setStats(r.season ?? {}))
+      .catch(() => undefined)
     return () => {
       cancelled = true
     }
   }, [leagueId, apiFetch])
 
-  const teamById = useMemo(() => {
-    const m = new Map<string, Team>()
-    for (const t of teams) m.set(t.id, t)
-    return m
-  }, [teams])
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return players.filter((p) => {
-      if (q && !p.name.toLowerCase().includes(q) && !p.teamCode.toLowerCase().includes(q)) {
-        return false
-      }
-      if (filter === 'unassigned' && p.teamId !== null) return false
-      if (filter === 'assigned' && p.teamId === null) return false
-      if (teamFilter !== 'all' && p.teamId !== teamFilter) return false
-      return true
-    })
-  }, [players, search, filter, teamFilter])
-
-  const updatePlayer = useCallback(
-    async (playerId: string, patch: Partial<Player>) => {
+  // Optimistic: the board must feel instant, and a failure puts the
+  // player back where she was rather than leaving a lie on screen.
+  const patch = useCallback(
+    async (playerId: string, body: Partial<Player>, previous: Partial<Player>) => {
       if (!leagueId) return
-      // Optimistic local update
       setPlayers((prev) =>
-        prev.map((p) => (p.id === playerId ? { ...p, ...patch } : p))
+        (prev ?? []).map((p) => (p.id === playerId ? { ...p, ...body } : p))
       )
       try {
         await apiFetch(`/api/leagues/${leagueId}/players/${playerId}`, {
           method: 'PATCH',
-          body: JSON.stringify(patch),
+          body: JSON.stringify(body),
         })
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Save failed')
-        // Reload to undo optimistic
-        try {
-          const fresh = await apiFetch<Player[]>(`/api/leagues/${leagueId}/players`)
-          setPlayers(fresh)
-        } catch {
-          // ignore
-        }
+        setPlayers((prev) =>
+          (prev ?? []).map((p) => (p.id === playerId ? { ...p, ...previous } : p))
+        )
       }
     },
     [leagueId, apiFetch]
   )
 
-  if (leagueLoading) return <Centered>Loading…</Centered>
+  const pool = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return (players ?? [])
+      .filter((p) => p.teamId == null)
+      .filter(
+        (p) =>
+          !q ||
+          p.name.toLowerCase().includes(q) ||
+          (p.teamCode ?? '').toLowerCase().includes(q) ||
+          (p.position ?? '').toLowerCase().includes(q)
+      )
+      .sort((a, b) => (stats[b.id]?.cat ?? -99) - (stats[a.id]?.cat ?? -99))
+  }, [players, search, stats])
 
+  if (leagueLoading || (!players && !error)) {
+    return (
+      <div className="max-w-6xl mx-auto px-4 py-8 flex flex-col gap-2">
+        <Skeleton h="2.2rem" w="40%" />
+        <Skeleton h="4rem" />
+        <Skeleton h="20rem" />
+      </div>
+    )
+  }
   if (!currentLeague) {
     return (
-      <Centered>
-        <p className="mb-4">No league selected.</p>
-        <Link to="/teams" className="text-green-400 hover:text-green-300">
-          ← Pick a league
+      <EmptyState title="No league selected">
+        <Link to="/teams" className="text-[var(--color-accent)]">
+          Pick a league
         </Link>
-      </Centered>
+      </EmptyState>
     )
   }
-
   if (!isCommissioner) {
-    return (
-      <Centered>
-        <p className="mb-4">Only the commissioner can manage rosters.</p>
-        <Link
-          to={`/league/${currentLeague.id}`}
-          className="text-green-400 hover:text-green-300"
-        >
-          ← Back to league
-        </Link>
-      </Centered>
-    )
+    return <EmptyState title="Commissioner only">Rosters belong to whoever runs the league.</EmptyState>
   }
+  if (error) return <EmptyState title="Something went wrong">{error}</EmptyState>
 
-  const unassignedCount = players.filter((p) => p.teamId === null).length
-  const assignedCount = players.length - unassignedCount
+  const all = players ?? []
+  const activeSize = currentLeague.config.roster?.activeSize ?? 10
+  const cap = currentLeague.config.cap?.enabled ? currentLeague.config.cap : null
+  const rosterOf = (teamId: string) => all.filter((p) => p.teamId === teamId)
+  const spotsOf = (teamId: string) => rosterOf(teamId).filter((p) => HOLDS_ROSTER_SPOT(p.slot)).length
+  const capOf = (teamId: string) =>
+    rosterOf(teamId)
+      .filter((p) => COUNTS_AGAINST_CAP(p.slot))
+      .reduce((n, p) => n + (p.salary ?? 0), 0)
+
+  const add = (p: Player) => {
+    if (!activeTeam) return
+    patch(p.id, { teamId: activeTeam, slot: 'active' }, { teamId: null })
+    setSearch('')
+    searchRef.current?.focus()
+  }
+  const remove = (p: Player) =>
+    patch(p.id, { teamId: null, slot: 'active' }, { teamId: p.teamId, slot: p.slot })
+
+  const current = teams.find((t) => t.id === activeTeam) ?? null
+  const currentRoster = activeTeam ? rosterOf(activeTeam) : []
+  const unassigned = all.filter((p) => p.teamId == null).length
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="max-w-6xl mx-auto px-4 py-6 pb-24">
+      <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Roster Manager</h1>
-          <p className="text-gray-400 mt-1">
-            {currentLeague.name} · {players.length} players · {assignedCount} assigned · {unassignedCount} free agents
+          <h1 className="text-2xl font-bold">Build rosters</h1>
+          <p className="text-sm text-[var(--color-muted-foreground)]">
+            {currentLeague.name} · {all.length} players · {unassigned} still free
           </p>
         </div>
         <Link
-          to={`/league/${currentLeague.id}`}
-          className="text-sm text-gray-400 hover:text-white"
+          to={`/league/${currentLeague.id}/lm`}
+          className="text-sm text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)] shrink-0"
         >
-          ← Back to league
+          ← LM tools
         </Link>
       </div>
 
-      {players.length === 0 && !loading && (
-        <div className="bg-mns-card border border-gray-800 rounded-lg p-8 text-center">
-          <div className="text-4xl mb-3">🏀</div>
-          <p className="font-semibold mb-2">No players in the pool yet.</p>
-          <p className="text-gray-400 text-sm mb-4">
-            Populate the player pool first from the league home.
-          </p>
-          <Link
-            to={`/league/${currentLeague.id}`}
-            className="inline-block px-5 py-2 bg-green-500 hover:bg-green-400 text-black font-bold rounded-lg"
-          >
-            ← Back to league
+      {teams.length === 0 ? (
+        <EmptyState title="No teams yet">
+          <Link to={`/league/${currentLeague.id}/lm/teams`} className="text-[var(--color-accent)]">
+            Add teams first
           </Link>
-        </div>
-      )}
-
-      {error && (
-        <div className="mb-4 p-3 bg-red-900/30 border border-red-500/30 rounded-lg text-red-300 text-sm">
-          {error}
-        </div>
-      )}
-
-      {players.length > 0 && (
+          , then fill their rosters here.
+        </EmptyState>
+      ) : (
         <>
-          <div className="bg-mns-card border border-gray-800 rounded-lg p-4 mb-4 flex flex-wrap gap-3 items-center">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name or WNBA team..."
-              className="flex-1 min-w-[200px] px-3 py-2 bg-mns-dark border border-gray-700 rounded text-white placeholder-gray-500 focus:border-green-400 focus:outline-none"
-            />
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value as Filter)}
-              className="px-3 py-2 bg-mns-dark border border-gray-700 rounded text-white focus:border-green-400 focus:outline-none"
-            >
-              <option value="all">All players</option>
-              <option value="unassigned">Free agents only</option>
-              <option value="assigned">Assigned only</option>
-            </select>
-            <select
-              value={teamFilter}
-              onChange={(e) => setTeamFilter(e.target.value)}
-              className="px-3 py-2 bg-mns-dark border border-gray-700 rounded text-white focus:border-green-400 focus:outline-none"
-            >
-              <option value="all">Any team</option>
-              {teams.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} ({t.abbrev})
-                </option>
-              ))}
-            </select>
-            <div className="text-sm text-gray-400">{filtered.length} shown</div>
+          {/* Every team's progress, and the switch between them. */}
+          <div className="flex gap-1.5 overflow-x-auto pb-2 mb-4">
+            {teams.map((t) => {
+              const filled = spotsOf(t.id)
+              const on = t.id === activeTeam
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setActiveTeam(t.id)}
+                  aria-pressed={on}
+                  className={
+                    'shrink-0 rounded-lg px-3 py-2 min-h-[3rem] border text-left ' +
+                    (on
+                      ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10'
+                      : 'border-[var(--color-border)]')
+                  }
+                >
+                  <span className={'block text-sm font-semibold ' + (on ? 'text-[var(--color-accent)]' : '')}>
+                    {t.name}
+                  </span>
+                  <span className="block text-xs tabular-nums text-[var(--color-muted-foreground)]">
+                    {filled}/{activeSize}
+                    {filled === activeSize ? ' ✓' : ''}
+                  </span>
+                </button>
+              )
+            })}
           </div>
 
-          {loading ? (
-            <Centered>Loading players…</Centered>
-          ) : (
-            <div className="bg-mns-card border border-gray-800 rounded-lg overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-mns-hover text-gray-400 text-xs uppercase">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Player</th>
-                    <th className="px-3 py-2 text-left">WNBA</th>
-                    <th className="px-3 py-2 text-left">Pos</th>
-                    <th className="px-3 py-2 text-right">Salary</th>
-                    <th className="px-3 py-2 text-left">Assigned To</th>
-                    <th className="px-3 py-2 text-left">Slot</th>
-                    <th className="px-3 py-2 text-left">Prior Round</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((p) => (
-                    <PlayerRow
-                      key={p.id}
-                      player={p}
-                      teams={teams}
-                      teamById={teamById}
-                      onUpdate={updatePlayer}
-                    />
-                  ))}
-                </tbody>
-              </table>
-              {filtered.length === 0 && (
-                <div className="p-6 text-center text-gray-400">
-                  No players match your filters.
-                </div>
-              )}
-            </div>
-          )}
+          <div className="grid lg:grid-cols-2 gap-4">
+            {/* The pool: type, press Enter, she lands on the roster. */}
+            <section>
+              <div className="relative mb-2">
+                <Search
+                  aria-hidden
+                  className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted-foreground)]"
+                />
+                <input
+                  ref={searchRef}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && pool[0]) add(pool[0])
+                    if (e.key === 'Escape') setSearch('')
+                  }}
+                  placeholder={`Search the pool — Enter adds to ${current?.name ?? 'the team'}`}
+                  className="w-full pl-9 pr-3 py-2.5 min-h-[3rem] rounded-lg bg-mns-card border border-[var(--color-border-interactive)] text-[var(--color-foreground)] placeholder:text-[var(--color-muted-foreground)] focus:outline-none focus:border-[var(--color-accent)]"
+                />
+              </div>
+              <ul className="flex flex-col gap-1 max-h-[28rem] overflow-y-auto">
+                {pool.slice(0, 60).map((p, i) => (
+                  <li key={p.id}>
+                    <button
+                      onClick={() => add(p)}
+                      className={
+                        'w-full flex items-center gap-2 text-left rounded-lg px-3 py-2 min-h-[3rem] border hover:border-[var(--color-accent)] transition-colors ' +
+                        (i === 0 && search
+                          ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/5'
+                          : 'border-[var(--color-border)] bg-mns-card')
+                      }
+                    >
+                      <Plus aria-hidden className="w-4 h-4 shrink-0 text-[var(--color-accent)]" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold truncate">
+                          <PlayerName name={p.name} injuryStatus={p.injuryStatus} />
+                        </span>
+                        <span className="block text-xs text-[var(--color-muted-foreground)] tabular-nums">
+                          {[p.position, p.teamCode, p.salary != null ? fmtM(p.salary) : null]
+                            .filter(Boolean)
+                            .join(' · ')}
+                          {stats[p.id]?.cat != null ? ` · CAT ${stats[p.id].cat?.toFixed(2)}` : ''}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+                {pool.length === 0 ? (
+                  <li className="text-sm text-[var(--color-muted-foreground)] px-3 py-4">
+                    No free agents match.
+                  </li>
+                ) : null}
+              </ul>
+            </section>
+
+            {/* The team taking shape. */}
+            <section>
+              <div className="mb-2 rounded-lg border border-[var(--color-border)] bg-mns-card px-3 py-2 flex items-baseline justify-between tabular-nums">
+                <b className="truncate">{current?.name}</b>
+                <span className="text-sm shrink-0">
+                  <b
+                    style={{
+                      color:
+                        spotsOf(activeTeam ?? '') > activeSize
+                          ? 'var(--color-pick-loss, #ff453a)'
+                          : undefined,
+                    }}
+                  >
+                    {spotsOf(activeTeam ?? '')}/{activeSize}
+                  </b>
+                  {cap ? (
+                    <span
+                      className="ml-2"
+                      style={{
+                        color:
+                          capOf(activeTeam ?? '') > cap.hardCap
+                            ? 'var(--color-pick-loss, #ff453a)'
+                            : 'var(--color-muted-foreground)',
+                      }}
+                    >
+                      {fmtM(capOf(activeTeam ?? ''))} / {fmtM(cap.hardCap)}
+                    </span>
+                  ) : null}
+                </span>
+              </div>
+              <ul className="flex flex-col gap-1 max-h-[28rem] overflow-y-auto">
+                {currentRoster.map((p) => (
+                  <li
+                    key={p.id}
+                    className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-mns-card px-3 py-2"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold truncate">
+                        <PlayerName name={p.name} injuryStatus={p.injuryStatus} />
+                      </span>
+                      <span className="block text-xs text-[var(--color-muted-foreground)] tabular-nums">
+                        {[p.position, p.teamCode, p.salary != null ? fmtM(p.salary) : null]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </span>
+                    </span>
+                    <select
+                      value={p.slot ?? 'active'}
+                      onChange={(e) =>
+                        patch(p.id, { slot: e.target.value as PlayerSlot }, { slot: p.slot })
+                      }
+                      aria-label={`Slot for ${p.name}`}
+                      className="shrink-0 text-xs px-2 py-1 min-h-[2.5rem] rounded bg-[var(--color-background)] border border-[var(--color-border-interactive)] text-[var(--color-foreground)]"
+                    >
+                      {SLOTS.map((s) => (
+                        <option key={s.value} value={s.value}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => remove(p)}
+                      aria-label={`Remove ${p.name}`}
+                      className="shrink-0 p-2 text-[var(--color-muted-foreground)] hover:text-[var(--color-pick-loss,#ff453a)]"
+                    >
+                      <X aria-hidden className="w-4 h-4" />
+                    </button>
+                  </li>
+                ))}
+                {currentRoster.length === 0 ? (
+                  <li className="text-sm text-[var(--color-muted-foreground)] px-3 py-4">
+                    Empty — search on the left and press Enter to add.
+                  </li>
+                ) : null}
+              </ul>
+            </section>
+          </div>
+
+          <div className="mt-6">
+            <Button to={`/league/${currentLeague.id}/lm/teams`} variant="quiet">
+              Teams &amp; invites
+            </Button>
+          </div>
         </>
       )}
-    </div>
-  )
-}
-
-function PlayerRow({
-  player,
-  teams,
-  teamById,
-  onUpdate,
-}: {
-  player: Player
-  teams: Team[]
-  teamById: Map<string, Team>
-  onUpdate: (id: string, patch: Partial<Player>) => Promise<void>
-}) {
-  const [round, setRound] = useState<string>(
-    player.keeperPriorYearRound !== null ? String(player.keeperPriorYearRound) : ''
-  )
-
-  useEffect(() => {
-    setRound(
-      player.keeperPriorYearRound !== null ? String(player.keeperPriorYearRound) : ''
-    )
-  }, [player.keeperPriorYearRound])
-
-  const assignedTeam = player.teamId ? teamById.get(player.teamId) : null
-
-  return (
-    <tr className="border-t border-gray-800 hover:bg-mns-hover/40">
-      <td className="px-3 py-2">
-        <div className="font-semibold text-white">{player.name}</div>
-        {player.isRookie && (
-          <span className="text-xs text-pink-400">Rookie</span>
-        )}
-      </td>
-      <td className="px-3 py-2 text-gray-300">{player.teamCode || '—'}</td>
-      <td className="px-3 py-2">
-        <input
-          type="text"
-          value={player.position}
-          onChange={(e) => onUpdate(player.id, { position: e.target.value.toUpperCase() })}
-          maxLength={6}
-          className="w-16 px-2 py-1 bg-mns-dark border border-gray-700 rounded text-white uppercase text-center"
-        />
-      </td>
-      <td className="px-3 py-2 text-right text-gray-300 tabular-nums">
-        ${player.salary.toLocaleString()}
-      </td>
-      <td className="px-3 py-2">
-        <select
-          value={player.teamId ?? ''}
-          onChange={(e) =>
-            onUpdate(player.id, { teamId: e.target.value || null })
-          }
-          className="px-2 py-1 bg-mns-dark border border-gray-700 rounded text-white"
-        >
-          <option value="">Free agent</option>
-          {teams.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.abbrev}
-            </option>
-          ))}
-        </select>
-        {assignedTeam && (
-          <div className="text-xs text-gray-500 mt-0.5">{assignedTeam.name}</div>
-        )}
-      </td>
-      <td className="px-3 py-2">
-        <select
-          value={player.slot}
-          onChange={(e) =>
-            onUpdate(player.id, { slot: e.target.value as PlayerSlot })
-          }
-          disabled={!player.teamId}
-          className="px-2 py-1 bg-mns-dark border border-gray-700 rounded text-white disabled:opacity-40"
-        >
-          <option value="active">Active</option>
-          <option value="bench">Bench</option>
-          <option value="ir">IR</option>
-          <option value="redshirt">Redshirt</option>
-          <option value="international">Int'l</option>
-        </select>
-      </td>
-      <td className="px-3 py-2">
-        <input
-          type="number"
-          min={1}
-          max={20}
-          value={round}
-          onChange={(e) => setRound(e.target.value)}
-          onBlur={() => {
-            const v = round === '' ? null : Number(round)
-            if (v !== player.keeperPriorYearRound) {
-              onUpdate(player.id, { keeperPriorYearRound: v })
-            }
-          }}
-          placeholder="—"
-          className="w-16 px-2 py-1 bg-mns-dark border border-gray-700 rounded text-white text-center"
-        />
-      </td>
-    </tr>
-  )
-}
-
-function Centered({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="max-w-2xl mx-auto px-4 py-12 text-center text-gray-300">
-      {children}
     </div>
   )
 }
