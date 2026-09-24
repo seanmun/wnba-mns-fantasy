@@ -42,7 +42,7 @@ export function LeagueHome() {
   const leaguePhase = league.leaguePhase
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+    <div className="mns-page py-8 sm:py-12">
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
@@ -141,11 +141,20 @@ export function LeagueHome() {
       ) : null}
 
       {leaguePhase === 'regular_season' || leaguePhase === 'playoffs' ? (
-        <>
-          <PrizesTeaser leagueId={league.id} />
-          <WeekMatchups leagueId={league.id} myUserId={user?.id ?? null} />
-          <StandingsSection leagueId={league.id} myUserId={user?.id ?? null} />
-        </>
+        // Phones read top to bottom: pot, matchups, standings. A desktop
+        // keeps that DOM order but places matchups in a wide left column
+        // with the pot and standings stacked beside them.
+        <div className="lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:gap-x-8 lg:items-start">
+          <div className="lg:col-start-2 lg:row-start-1">
+            <PrizesTeaser leagueId={league.id} />
+          </div>
+          <div className="lg:col-start-1 lg:row-start-1 lg:row-span-2">
+            <WeekMatchups leagueId={league.id} myUserId={user?.id ?? null} />
+          </div>
+          <div className="lg:col-start-2 lg:row-start-2">
+            <StandingsSection leagueId={league.id} myUserId={user?.id ?? null} />
+          </div>
+        </div>
       ) : (
         <TeamsSection leagueId={league.id} isCommissioner={isCommissioner} myUserId={user?.id ?? null} />
       )}

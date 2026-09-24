@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import { Button, EmptyState, PageHeader, Skeleton } from '../ui/components'
 
 interface ScoreSide {
@@ -67,6 +68,10 @@ export function LiveScores() {
   const [boxes, setBoxes] = useState<Record<string, Box | null>>({})
   const openRef = useRef<string | null>(null)
   openRef.current = openId
+  // A desktop has room for every box score at once; a phone opens one.
+  const expandAll = useMediaQuery('(min-width: 1024px)')
+  const expandRef = useRef(false)
+  expandRef.current = expandAll
 
   const loadBox = (eventId: string) =>
     apiFetch<Box>(`/api/scores?event=${eventId}`)
@@ -80,9 +85,13 @@ export function LiveScores() {
         .then((d) => {
           if (cancelled) return
           setData(d)
-          // Keep an open box as live as the board.
+          // Keep the open box — every box, on a desktop — as live as
+          // the board.
           const open = openRef.current
-          if (open && d.games.some((g) => g.id === open && g.state !== 'pre')) void loadBox(open)
+          for (const g of d.games) {
+            if (g.state === 'pre') continue
+            if (expandRef.current || g.id === open) void loadBox(g.id)
+          }
         })
         .catch((e: Error) => {
           if (!cancelled) setError(e.message)
@@ -146,12 +155,12 @@ export function LiveScores() {
       ) : data.games.length === 0 ? (
         <EmptyState title="No games">Nobody plays this day.</EmptyState>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
           {data.games.map((g) => {
             const done = g.state === 'post'
             const homeWins = done && g.home.score > g.away.score
             const awayWins = done && g.away.score > g.home.score
-            const open = openId === g.id
+            const open = expandAll ? g.state !== 'pre' : openId === g.id
             const box = boxes[g.id]
             return (
               <li
@@ -160,8 +169,8 @@ export function LiveScores() {
               >
                 <button
                   onClick={() => toggleBox(g)}
-                  disabled={g.state === 'pre'}
-                  aria-expanded={open}
+                  disabled={g.state === 'pre' || expandAll}
+                  aria-expanded={expandAll ? undefined : open}
                   aria-label={`${g.away.code} at ${g.home.code}${g.state === 'pre' ? '' : ' — box score'}`}
                   className="w-full text-left"
                 >
@@ -175,7 +184,7 @@ export function LiveScores() {
                     >
                       {g.state === 'in' ? `LIVE · ${g.detail}` : g.detail}
                     </span>
-                    {g.state !== 'pre' ? (
+                    {g.state !== 'pre' && !expandAll ? (
                       <span className="text-[var(--color-muted-foreground)]" aria-hidden>
                         {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </span>

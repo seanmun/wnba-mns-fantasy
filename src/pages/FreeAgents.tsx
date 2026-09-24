@@ -195,7 +195,7 @@ export function FreeAgents() {
           <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-1.5">
             {state.slateToday ? "Tonight's games — adds play tonight" : "Tomorrow's games — claims land for these"}
           </h2>
-          <div className="flex gap-1.5 overflow-x-auto pb-1">
+          <div className="flex gap-1.5 overflow-x-auto pb-1 lg:flex-wrap lg:overflow-visible">
             {Object.entries(state.games)
               .filter(([, g]) => g.home)
               .map(([code, g]) => (
@@ -237,7 +237,7 @@ export function FreeAgents() {
       ) : null}
 
       {state.myTeamId && adds.length > 0 ? (
-        <div className="fixed left-0 right-0 bottom-16 z-40 bg-[var(--color-background)] border-t border-[var(--color-border-interactive)] px-4 py-3 flex flex-col gap-2 max-h-[45vh] overflow-y-auto">
+        <div className="fixed left-0 right-0 bottom-16 z-40 bg-[var(--color-background)] border-t border-[var(--color-border-interactive)] px-4 py-3 flex flex-col gap-2 max-h-[45vh] overflow-y-auto lg:left-1/2 lg:right-auto lg:-translate-x-1/2 lg:w-[44rem] lg:max-w-[calc(100%-3rem)] lg:rounded-t-xl lg:border-x">
           <span className="text-sm">
             <b>Adding:</b> {adds.map(nameOf).join(' → ')}
           </span>

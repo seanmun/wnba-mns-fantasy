@@ -86,6 +86,7 @@ const chipParts = (date: string) => {
   return {
     num: d.toLocaleDateString('en-US', { day: 'numeric', timeZone: 'UTC' }),
     dow: d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }),
+    mon: d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }),
   }
 }
 const fmtTip = (iso: string) =>
@@ -300,7 +301,7 @@ export function MatchupDetail() {
       {/* The week, one day at a time — who suits up on each date. */}
       <div className="mb-4 flex gap-1">
         {weekDays.map((d) => {
-          const { num, dow } = chipParts(d)
+          const { num, dow, mon } = chipParts(d)
           return (
             <button
               key={d}
@@ -315,6 +316,7 @@ export function MatchupDetail() {
               }
             >
               <span className={'text-sm leading-tight' + (d === day.date ? ' font-bold' : '')}>
+                <span className="hidden lg:inline">{mon} </span>
                 {num}
               </span>
               <span className={'text-[0.62rem] uppercase tracking-wide leading-tight' + (d === day.today ? ' underline underline-offset-2' : '')}>
