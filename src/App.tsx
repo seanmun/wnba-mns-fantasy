@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, useLocation, useParams } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { ScrollToTop } from './components/ScrollToTop'
@@ -8,6 +8,8 @@ import { Header } from './components/Header'
 import { Footer } from './components/Footer'
 import { LeagueTopNav } from './components/LeagueTopNav'
 import { LeagueBottomNav } from './components/LeagueBottomNav'
+import { BumperPanel } from './components/BumperPanel'
+import { useMediaQuery } from './hooks/useMediaQuery'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { LeagueProvider, useLeague } from './contexts/LeagueContext'
 
@@ -112,17 +114,37 @@ function LeagueLayout({ children }: { children: React.ReactNode }) {
     if (leagueId && leagueId !== currentLeagueId) setCurrentLeagueId(leagueId)
   }, [leagueId, currentLeagueId, setCurrentLeagueId])
 
+  // Bump has two homes: a sheet over the page on a phone, a panel docked
+  // beside it from 1280px so a conversation and the roster share the
+  // screen. Ask toggles whichever applies.
+  const docked = useMediaQuery('(min-width: 1280px)')
+  const [askOpen, setAskOpen] = useState(false)
+  const panel = docked && askOpen
+
   return (
     <div className="flex flex-col min-h-screen">
       <Header />
       <LeagueTopNav />
-      {/* pb clears the always-visible bottom tab bar */}
-      <main className="flex-1 pb-16">
-        {/* Keyed by route: one page's crash must not poison the others. */}
-        <ErrorBoundary resetKey={pathname}>{children}</ErrorBoundary>
-      </main>
+      <div className={panel ? 'flex-1 grid grid-cols-[minmax(0,1fr)_22rem] items-stretch' : 'flex-1 flex flex-col'}>
+        {/* pb clears the always-visible bottom tab bar */}
+        <main className="flex-1 min-w-0 pb-16">
+          {/* Keyed by route: one page's crash must not poison the others. */}
+          <ErrorBoundary resetKey={pathname}>{children}</ErrorBoundary>
+        </main>
+        {panel ? (
+          <div className="sticky top-0 h-screen min-h-0 pb-16">
+            <BumperPanel
+              leagueId={leagueId ?? ''}
+              onClose={(acted) => {
+                setAskOpen(false)
+                if (acted) window.location.reload()
+              }}
+            />
+          </div>
+        ) : null}
+      </div>
       <Footer />
-      <LeagueBottomNav />
+      <LeagueBottomNav askOpen={askOpen} setAskOpen={setAskOpen} docked={docked} />
     </div>
   )
 }

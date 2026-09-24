@@ -9,6 +9,7 @@ import { useLeague } from '../contexts/LeagueContext'
 import { PlayerName } from '../components/InjuryTag'
 import { RangeChips, type RangeKey, type StatAvg } from '../components/StatTable'
 import { PlayerCard, isFreshNews } from '../components/PlayerCard'
+import { StrategyDials } from '../components/StrategyDials'
 import { COUNTS_AGAINST_CAP, HOLDS_ROSTER_SPOT } from '../lib/season/roster'
 import { assignSlots } from '../lib/season/positions'
 
@@ -1030,65 +1031,19 @@ function TeamSettings({
           Set the dials and Bump tailors every suggestion — trades, pickups, keepers — to how YOU
           run this team. Private to your team; other owners get their own advice.
         </p>
-        <div className="flex flex-col gap-3">
-          {(
-            [
-              ['timeline', 'Rebuilding', 'Win now'],
-              ['spending', 'Cap-frugal', 'Spend to the apron'],
-              ['rosterShape', 'Balanced', 'Specialists (punt)'],
-              ['assetTaste', 'Picks & prospects', 'Proven veterans'],
-              ['risk', 'Safe floors', 'Upside swings'],
-              ['activity', 'Set & forget', 'Daily grinder'],
-            ] as const
-          ).map(([k, left, right]) => (
-            <label key={k} className="block">
-              <span className="flex justify-between text-xs text-[var(--color-muted-foreground)] mb-0.5">
-                <span>{left}</span>
-                <span>{right}</span>
-              </span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={5}
-                value={Number(ai[k] ?? 50)}
-                onChange={(e) => {
-                  setAi((a) => ({ ...a, [k]: Number(e.target.value) }))
-                  setAiDirty(true)
-                }}
-                className="w-full accent-[var(--color-accent)]"
-                aria-label={`${left} to ${right}`}
-              />
-            </label>
-          ))}
-          <label className="block">
-            <span className="block text-xs text-[var(--color-muted-foreground)] mb-1">
-              Your philosophy, in your words — this outranks the dials
-            </span>
-            <textarea
-              value={String(ai.notes ?? '')}
-              maxLength={600}
-              rows={3}
-              placeholder={'e.g. "Never trade my 2027 firsts. I punt FT%. Prefer two-way wings."'}
-              onChange={(e) => {
-                setAi((a) => ({ ...a, notes: e.target.value }))
-                setAiDirty(true)
-              }}
-              className="w-full px-3 py-2 rounded-lg bg-[var(--color-background)] border border-[var(--color-border-interactive)] text-[var(--color-foreground)] placeholder:text-[var(--color-muted-foreground)] focus:outline-none focus:border-[var(--color-accent)]"
-            />
-          </label>
-          {aiDirty ? (
-            <Button
-              onClick={() => {
-                setAiDirty(false)
-                void save({ aiPrefs: ai }, "Saved — Bump's advice follows your dials now")
-              }}
-              disabled={saving}
-            >
-              Save strategy
-            </Button>
-          ) : null}
-        </div>
+        <StrategyDials
+          value={ai}
+          onChange={(next) => {
+            setAi(next)
+            setAiDirty(true)
+          }}
+          dirty={aiDirty}
+          saving={saving}
+          onSave={() => {
+            setAiDirty(false)
+            void save({ aiPrefs: ai }, "Saved — Bump's advice follows your dials now")
+          }}
+        />
       </div>
 
       <div>
