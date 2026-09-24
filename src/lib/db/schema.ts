@@ -154,6 +154,45 @@ export const mnsTeamOwners = wnbaSchema.table(
 // PLAYERS
 // ============================================================================
 
+// WHO A PLAYER IS, independent of any league or any data source. League
+// rows (players, below) hold what is league-specific — team, salary,
+// slot, keeper round — and point here for identity.
+//
+// The crosswalk is the point: external_ids maps every source's key for
+// this person ({ espn: '869', hhs: 'naz-hillmon', bbref: ... }), so a
+// source swap is a new key, not a re-match. Names are resolved ONCE and
+// written down; birth_date is the disambiguator that makes a name
+// collision decidable instead of a guess.
+export const mnsPlayerIdentities = wnbaSchema.table(
+  'player_identities',
+  {
+    id: text('id').primaryKey(),
+    sport: text('sport').notNull(),
+    fullName: text('full_name').notNull(),
+    // Accent-folded, punctuation-free, suffix-free.
+    normalizedName: text('normalized_name').notNull(),
+    // First name expanded (Matt -> Matthew). Only ever trusted with a
+    // birth-date confirmation, since short forms are gender-ambiguous.
+    canonicalName: text('canonical_name').notNull(),
+    birthDate: text('birth_date'),
+    externalIds: jsonb('external_ids')
+      .$type<Record<string, string>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    // Set when resolution was not certain — a human confirms rather
+    // than the app silently merging two people.
+    needsReview: boolean('needs_review').notNull().default(false),
+    reviewNote: text('review_note'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => [
+    index('idx_mns_identities_norm').on(t.sport, t.normalizedName),
+    index('idx_mns_identities_canon').on(t.sport, t.canonicalName),
+    index('idx_mns_identities_review').on(t.needsReview),
+  ]
+)
+
 export const mnsPlayers = wnbaSchema.table(
   'players',
   {
@@ -208,6 +247,9 @@ export const mnsPlayers = wnbaSchema.table(
     // Stamped when the report CHANGES for this player — "new news"
     // indicators key off recency of this, not of the tick.
     injuryUpdatedAt: timestamp('injury_updated_at'),
+    // The league-independent person this row represents — identity and
+    // every source's key for her live on player_identities.
+    identityId: text('identity_id').references(() => mnsPlayerIdentities.id),
     isRookie: boolean('is_rookie').notNull().default(false),
     isInternationalStash: boolean('is_international_stash')
       .notNull()

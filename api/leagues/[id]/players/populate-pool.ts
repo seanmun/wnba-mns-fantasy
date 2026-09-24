@@ -8,6 +8,7 @@ import {
   mnsLeagueImports,
 } from '../../../../src/lib/db/schema.js'
 import { logger } from '../../../_logger.js'
+import { resolveIdentity } from '../../../../src/lib/players/identity.js'
 import { scrapeWnbaPlayers } from '../../../../src/lib/scrapers/wnba.js'
 import type { ExternalIds } from '../../../../src/types/player.js'
 
@@ -70,6 +71,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .limit(1)
 
       const externalIds: ExternalIds = { hhs: p.slug }
+      // Identity first: the person exists independently of this league,
+      // and the crosswalk is what keeps later source joins exact.
+      const resolved = await resolveIdentity(db, league.sport, {
+        source: 'hhs',
+        sourceId: p.slug,
+        name: p.name,
+      })
 
       if (existing.length > 0) {
         await db
@@ -80,6 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             salary: p.salary,
             teamCode: p.team,
             externalIds,
+            ...(resolved ? { identityId: resolved.identityId } : {}),
             updatedAt: new Date(),
           })
           .where(eq(mnsPlayers.id, existing[0].id))
@@ -88,6 +97,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await db.insert(mnsPlayers).values({
           id: generatePlayerId(p.slug),
           externalIds,
+          ...(resolved ? { identityId: resolved.identityId } : {}),
           name: p.name,
           position: p.position || 'F',
           salary: p.salary,
