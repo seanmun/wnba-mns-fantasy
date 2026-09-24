@@ -327,7 +327,7 @@ export function OwnerDashboard() {
   if (error) return <EmptyState title="Something went wrong">{error}</EmptyState>
   if (teams == null || players == null) {
     return (
-      <div className="mns-pagepy-6 flex flex-col gap-2">
+      <div className="mns-page py-6 flex flex-col gap-2">
         <Skeleton h="2.2rem" w="55%" />
         <Skeleton h="3.4rem" />
         <Skeleton h="3.4rem" />
@@ -405,7 +405,7 @@ export function OwnerDashboard() {
   }
 
   return (
-    <div className="mns-pagepy-2 pb-24">
+    <div className="mns-page py-2 pb-24">
       <div className="relative">
         <PageHeader
           back={`/league/${leagueId}`}
@@ -495,7 +495,7 @@ export function OwnerDashboard() {
       {/* The day carousel: yesterday is history, tomorrow is a plan.
           Phones step one day at a time; desktops see the week around
           the selected day and click straight to it. */}
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex items-center gap-2 lg:justify-center">
         <Button
           variant="quiet"
           aria-label="Previous day"
@@ -510,7 +510,7 @@ export function OwnerDashboard() {
             {isToday ? 'Today' : locked ? 'Locked — this day is done' : 'Sets automatically on the day'}
           </div>
         </div>
-        <div className="hidden lg:flex flex-1 justify-center gap-1.5">
+        <div className="hidden lg:flex gap-1.5">
           {[-3, -2, -1, 0, 1, 2, 3].map((off) => {
             const d = shiftDate(selDate, off)
             const dt = new Date(`${d}T00:00:00Z`)
