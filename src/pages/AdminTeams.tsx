@@ -157,7 +157,7 @@ export function AdminTeams() {
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <div className="max-w-2xl mx-auto px-4 py-12 text-center text-gray-300">
+    <div className="mns-page py-12 text-center text-gray-300">
       {children}
     </div>
   )

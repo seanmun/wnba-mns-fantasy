@@ -47,7 +47,7 @@ export function Prizes() {
   if (error) return <EmptyState title="Something went wrong">{error}</EmptyState>
   if (!data) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-6 flex flex-col gap-2">
+      <div className="mns-page py-6 flex flex-col gap-2">
         <Skeleton h="2.2rem" w="45%" />
         <Skeleton h="7rem" />
         <Skeleton h="5rem" />
@@ -56,7 +56,7 @@ export function Prizes() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-2 pb-24">
+    <div className="mns-page py-2 pb-24">
       <PageHeader
         back={`/league/${leagueId}`}
         backLabel="League home"

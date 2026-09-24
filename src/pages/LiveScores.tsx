@@ -111,7 +111,7 @@ export function LiveScores() {
   const isToday = date === etToday()
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-2 pb-24">
+    <div className="mns-page py-2 pb-24">
       <PageHeader
         back={`/league/${leagueId}/matchup`}
         backLabel="Matchup"

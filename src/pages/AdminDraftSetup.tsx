@@ -67,7 +67,7 @@ export function AdminDraftSetup() {
   const rounds = currentLeague?.config.draft?.rounds ?? currentLeague?.config.roster?.activeSize
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8 pb-24">
+    <div className="mns-page py-8 pb-24">
       <Link to={`/league/${leagueId}/lm`} className="text-xs text-[var(--color-muted-foreground)]">
         ← LM hub
       </Link>

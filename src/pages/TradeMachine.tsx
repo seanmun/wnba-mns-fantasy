@@ -85,7 +85,7 @@ export function TradeMachine() {
   if (error) return <EmptyState title="Something went wrong">{error}</EmptyState>
   if (!teams || !players || !trades) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-6 flex flex-col gap-2">
+      <div className="mns-page py-6 flex flex-col gap-2">
         <Skeleton h="2.2rem" w="50%" />
         <Skeleton h="3.4rem" />
         <Skeleton h="3.4rem" />
@@ -134,7 +134,7 @@ export function TradeMachine() {
   const history = trades.proposals.filter((p) => p.status !== 'pending').slice(0, 10)
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-2 pb-24">
+    <div className="mns-page py-2 pb-24">
       <PageHeader
         back={`/league/${leagueId}`}
         backLabel="League home"

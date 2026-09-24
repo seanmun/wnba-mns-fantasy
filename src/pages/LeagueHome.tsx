@@ -23,7 +23,7 @@ export function LeagueHome() {
 
   if (!league) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-16 text-center">
+      <div className="mns-page py-16 text-center">
         <h1 className="text-2xl font-bold mb-2">League not found</h1>
         <p className="text-gray-400 mb-6">
           You don't have access to this league, or it doesn't exist.

@@ -92,7 +92,7 @@ export function FreeAgents() {
   if (error) return <EmptyState title="Something went wrong">{error}</EmptyState>
   if (!state) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-6 flex flex-col gap-2">
+      <div className="mns-page py-6 flex flex-col gap-2">
         <Skeleton h="2.2rem" w="55%" />
         <Skeleton h="3.4rem" />
         <Skeleton h="3.4rem" />
@@ -159,7 +159,7 @@ export function FreeAgents() {
   const nameOf = (id: string) => state.freeAgents.find((p) => p.id === id)?.name ?? id
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-2 pb-24">
+    <div className="mns-page py-2 pb-24">
       <PageHeader
         back={`/league/${leagueId}`}
         backLabel="League home"

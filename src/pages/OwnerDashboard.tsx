@@ -327,7 +327,7 @@ export function OwnerDashboard() {
   if (error) return <EmptyState title="Something went wrong">{error}</EmptyState>
   if (teams == null || players == null) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-6 flex flex-col gap-2">
+      <div className="mns-pagepy-6 flex flex-col gap-2">
         <Skeleton h="2.2rem" w="55%" />
         <Skeleton h="3.4rem" />
         <Skeleton h="3.4rem" />
@@ -405,7 +405,7 @@ export function OwnerDashboard() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-2 pb-24">
+    <div className="mns-pagepy-2 pb-24">
       <div className="relative">
         <PageHeader
           back={`/league/${leagueId}`}
@@ -439,9 +439,16 @@ export function OwnerDashboard() {
         </div>
       </div>
 
+      {/* Desktop parks settings in a right column so the roster stays in
+          view while you edit; phones keep it above the roster as before.
+          The two wrappers close just before the page's closing div. */}
+      <div className={mine && showSettings ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-6 lg:items-start' : ''}>
       {mine && showSettings ? (
-        <TeamSettings leagueId={leagueId} team={team} onSaved={() => { setShowSettings(false); load() }} />
+        <aside className="lg:order-2 lg:sticky lg:top-4">
+          <TeamSettings leagueId={leagueId} team={team} onSaved={() => { setShowSettings(false); load() }} />
+        </aside>
       ) : null}
+      <div className="min-w-0 lg:order-1">
       {currentLeague?.config.cap?.enabled ? (
         <CardCarousel pane={pane} onPane={setPane}>
           <CapCard capUsed={capUsed} cap={currentLeague.config.cap} fees={currentLeague.config.fees} />
@@ -485,7 +492,9 @@ export function OwnerDashboard() {
         </div>
       ) : null}
 
-      {/* The day carousel: yesterday is history, tomorrow is a plan. */}
+      {/* The day carousel: yesterday is history, tomorrow is a plan.
+          Phones step one day at a time; desktops see the week around
+          the selected day and click straight to it. */}
       <div className="mb-4 flex items-center gap-2">
         <Button
           variant="quiet"
@@ -495,11 +504,42 @@ export function OwnerDashboard() {
         >
           <ChevronLeft aria-hidden />
         </Button>
-        <div className="flex-1 text-center">
+        <div className="flex-1 text-center lg:hidden">
           <div className="font-bold">{fmtDay(selDate)}</div>
           <div className="text-xs text-[var(--color-muted-foreground)]">
             {isToday ? 'Today' : locked ? 'Locked — this day is done' : 'Sets automatically on the day'}
           </div>
+        </div>
+        <div className="hidden lg:flex flex-1 justify-center gap-1.5">
+          {[-3, -2, -1, 0, 1, 2, 3].map((off) => {
+            const d = shiftDate(selDate, off)
+            const dt = new Date(`${d}T00:00:00Z`)
+            const current = d === selDate
+            return (
+              <button
+                key={d}
+                type="button"
+                disabled={d < minDate || d > maxDate}
+                aria-current={current ? 'date' : undefined}
+                onClick={() => { setSelDate(d); setOpenRow(null); setConfirmDrop(null) }}
+                className={
+                  'min-w-[4.5rem] rounded-lg border px-2 py-1.5 leading-tight transition-colors disabled:opacity-25 ' +
+                  (current
+                    ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-foreground)]'
+                    : d < today
+                      ? 'border-[var(--color-border)] text-[var(--color-muted-foreground)] opacity-60 hover:opacity-100'
+                      : 'border-[var(--color-border)] text-[var(--color-muted-foreground)] hover:border-[var(--color-accent)] hover:text-[var(--color-foreground)]')
+                }
+              >
+                <div className="text-[0.65rem] font-bold uppercase tracking-wider">
+                  {d === today ? 'Today' : dt.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })}
+                </div>
+                <div className="text-sm font-bold tabular-nums">
+                  {dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}
+                </div>
+              </button>
+            )
+          })}
         </div>
         <Button
           variant="quiet"
@@ -515,14 +555,24 @@ export function OwnerDashboard() {
           </Button>
         ) : null}
       </div>
+      <p className="hidden lg:block -mt-2 mb-4 text-center text-xs text-[var(--color-muted-foreground)]">
+        {isToday ? 'Today' : locked ? 'Locked — this day is done' : 'Sets automatically on the day'}
+      </p>
       <div className="mb-4 flex justify-end">
         <RangeChips value={range} onChange={setRange} hasLastSeason={!!ranges?.lastSeason} />
       </div>
 
+      <PlayerCard leagueId={leagueId} playerId={cardId} ranges={ranges} onClose={() => setCardId(null)} />
+
+      {/* Desktop: the scoring slots run full width; the parked lists and
+          draft capital share the row beneath them. */}
+      <div className="lg:grid lg:grid-cols-2 lg:gap-x-6">
       {roster.length === 0 ? (
-        <EmptyState title="No players yet">
-          The roster fills from the draft, waivers and trades.
-        </EmptyState>
+        <div className="lg:col-span-2">
+          <EmptyState title="No players yet">
+            The roster fills from the draft, waivers and trades.
+          </EmptyState>
+        </div>
       ) : (
         <>
           {(
@@ -537,7 +587,10 @@ export function OwnerDashboard() {
             slotKey === 'active' ||
             list.length > 0 ||
             (mine && slotKey !== 'redshirt' && slotKey !== 'international') ? (
-              <section key={slotKey} className="mb-5">
+              <section
+                key={slotKey}
+                className={slotKey === 'redshirt' || slotKey === 'international' ? 'mb-5' : 'mb-5 lg:col-span-2'}
+              >
                 <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-muted-foreground)] mb-2">
                   {label} ({list.length})
                   {slotKey === 'active' && shape.length > 0 && lineupFit.openSlots.length > 0 ? (
@@ -799,8 +852,6 @@ export function OwnerDashboard() {
         </>
       )}
 
-      <PlayerCard leagueId={leagueId} playerId={cardId} ranges={ranges} onClose={() => setCardId(null)} />
-
       {/* Draft capital is roster truth too — the picks this team can
           deal or use, three drafts out. */}
       {(team.picks ?? []).length > 0 ? (
@@ -830,6 +881,9 @@ export function OwnerDashboard() {
           ) : null}
         </section>
       ) : null}
+      </div>
+      </div>
+      </div>
     </div>
   )
 }
@@ -1103,7 +1157,8 @@ function TeamSettings({
 // Two cards, one space: the cap picture by default, the league's fee
 // sheet a swipe away — the legacy app's carousel. Scroll-snap does the
 // swiping natively, and the dots double as buttons for anyone on a
-// mouse or a keyboard.
+// mouse or a keyboard. From desktop width both cards simply sit side
+// by side and the carousel chrome disappears.
 function CardCarousel({
   pane,
   onPane,
@@ -1132,7 +1187,7 @@ function CardCarousel({
         aria-label={dir < 0 ? 'Previous card' : 'Next card'}
         // Phones swipe; desktops get the arrows they expect, parked
         // outside the card so nothing covers its numbers.
-        className="hidden sm:inline-flex shrink-0 items-center justify-center w-9 h-9 rounded-full border border-[var(--color-border-interactive)] text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)] hover:border-[var(--color-accent)] disabled:opacity-25 disabled:hover:border-[var(--color-border-interactive)] disabled:hover:text-[var(--color-muted-foreground)] transition-colors"
+        className="hidden sm:inline-flex lg:hidden shrink-0 items-center justify-center w-9 h-9 rounded-full border border-[var(--color-border-interactive)] text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)] hover:border-[var(--color-accent)] disabled:opacity-25 disabled:hover:border-[var(--color-border-interactive)] disabled:hover:text-[var(--color-muted-foreground)] transition-colors"
       >
         {dir < 0 ? (
           <ChevronLeft aria-hidden className="w-5 h-5" />
@@ -1154,18 +1209,18 @@ function CardCarousel({
             const i = Math.round(el.scrollLeft / Math.max(1, el.clientWidth))
             if (i !== pane) onPane(i)
           }}
-          className="flex-1 min-w-0 flex overflow-x-auto snap-x snap-mandatory scrollbar-none"
+          className="flex-1 min-w-0 flex overflow-x-auto snap-x snap-mandatory scrollbar-none lg:grid lg:grid-cols-2 lg:gap-4 lg:overflow-visible"
           style={{ scrollbarWidth: 'none' }}
         >
           {panes.map((child, i) => (
-            <div key={i} className="min-w-full snap-center">
+            <div key={i} className="min-w-full snap-center lg:min-w-0">
               {child}
             </div>
           ))}
         </div>
         {arrow(1)}
       </div>
-      <div className="flex justify-center gap-2 -mt-2">
+      <div className="flex justify-center gap-2 -mt-2 lg:hidden">
         {panes.map((_, i) => (
           <button
             key={i}
